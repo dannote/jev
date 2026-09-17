@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1 (2026-09-17)
+
+- `Jev.Server` accepts `{:ok, state, timeout | {:continue, term}}` from `init/1`. Previously the
+  extra element was passed through unwrapped and the first callback crashed.
+- `terminate/2` and `code_change/3` are delegated to the callback module when defined.
+
 ## 0.1.0 (2026-09-17)
 
 - `Jev.Noul`, `Jev.Choice`, `Jev.Score` question structs with shorthands via `Jev.questions/1`.

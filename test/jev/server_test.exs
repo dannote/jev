@@ -163,6 +163,76 @@ defmodule Jev.ServerTest do
     assert Process.alive?(triage)
   end
 
+  defmodule Lifecycle do
+    @moduledoc false
+    use Jev.Server
+
+    @impl true
+    def init({:continue, reply_to}) do
+      # As with any GenServer, terminate/2 runs on supervisor shutdown only when trapping exits.
+      Process.flag(:trap_exit, true)
+      {:ok, %{reply_to: reply_to}, {:continue, :load}}
+    end
+
+    def init({:timeout, reply_to}), do: {:ok, %{reply_to: reply_to}, 0}
+
+    @impl true
+    def handle_answer(_reply, _tag, s), do: {:noreply, s}
+
+    @impl true
+    def handle_continue(:load, s) do
+      send(s.reply_to, :loaded)
+      {:noreply, s}
+    end
+
+    @impl true
+    def handle_info(:timeout, s) do
+      send(s.reply_to, :timed_out)
+      {:noreply, s}
+    end
+
+    @impl true
+    def terminate(reason, s), do: send(s.reply_to, {:terminated, reason})
+
+    @impl true
+    def code_change(_old, s, extra), do: {:ok, Map.put(s, :upgraded, extra)}
+  end
+
+  describe "lifecycle" do
+    test "init may return a continue or a timeout" do
+      start_supervised!(Supervisor.child_spec({Lifecycle, {:continue, self()}}, id: :c))
+      assert_receive :loaded
+
+      start_supervised!(Supervisor.child_spec({Lifecycle, {:timeout, self()}}, id: :t))
+      assert_receive :timed_out
+    end
+
+    test "terminate is delegated on supervisor shutdown" do
+      pid = start_supervised!({Lifecycle, {:continue, self()}})
+      assert_receive :loaded
+      :ok = stop_supervised!(Lifecycle)
+      refute Process.alive?(pid)
+      assert_receive {:terminated, :shutdown}
+    end
+
+    test "code_change is delegated and rewraps the state" do
+      pid = start_supervised!({Lifecycle, {:continue, self()}})
+      :sys.suspend(pid)
+      :ok = :sys.change_code(pid, Lifecycle, nil, :v2)
+      :sys.resume(pid)
+      assert :sys.get_state(pid).inner.upgraded == :v2
+    end
+
+    test "modules without terminate or code_change still stop and upgrade" do
+      pid = start_supervised!({Jev.Triage, []})
+      :sys.suspend(pid)
+      :ok = :sys.change_code(pid, Jev.Triage, nil, nil)
+      :sys.resume(pid)
+      assert :ok = stop_supervised!(Jev.Triage)
+      refute Process.alive?(pid)
+    end
+  end
+
   test "child_spec starts the module through Jev.Server" do
     assert %{id: Jev.Triage, start: {Jev.Server, :start_link, [Jev.Triage, :arg]}} =
              Jev.Triage.child_spec(:arg)

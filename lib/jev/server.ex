@@ -50,7 +50,10 @@ defmodule Jev.Server do
 
   Built the way `GenStage` and `Agent` are built: this module owns the real
   GenServer callbacks and delegates to yours, so `:sys.get_state/1`, Observer,
-  and every GenServer option keep working.
+  and every GenServer option keep working. `c:init/1` may return a timeout or
+  `{:continue, term}` as usual, and `c:terminate/2` and `c:code_change/3` are
+  delegated when defined. As with any GenServer, `terminate/2` runs on a
+  supervisor shutdown only if the process traps exits.
   """
 
   use GenServer
@@ -64,14 +67,26 @@ defmodule Jev.Server do
           | {:noreply, state :: term(), timeout() | :hibernate | {:continue, term()}}
           | {:stop, reason :: term(), state :: term()}
 
-  @callback init(arg :: term()) :: {:ok, state :: term()} | {:stop, reason :: term()} | :ignore
+  @callback init(arg :: term()) ::
+              {:ok, state :: term()}
+              | {:ok, state :: term(), timeout() | :hibernate | {:continue, term()}}
+              | {:stop, reason :: term()}
+              | :ignore
   @callback handle_answer(Jev.reply() | {:error, term()}, tag :: term(), state :: term()) ::
               reply()
   @callback handle_call(request :: term(), GenServer.from(), state :: term()) :: reply()
   @callback handle_cast(request :: term(), state :: term()) :: reply()
   @callback handle_info(message :: term(), state :: term()) :: reply()
   @callback handle_continue(continue :: term(), state :: term()) :: reply()
-  @optional_callbacks handle_call: 3, handle_cast: 2, handle_info: 2, handle_continue: 2
+  @callback terminate(reason :: term(), state :: term()) :: term()
+  @callback code_change(old_vsn :: term() | {:down, term()}, state :: term(), extra :: term()) ::
+              {:ok, state :: term()} | {:error, term()}
+  @optional_callbacks handle_call: 3,
+                      handle_cast: 2,
+                      handle_info: 2,
+                      handle_continue: 2,
+                      terminate: 2,
+                      code_change: 3
 
   defmacro __using__(_opts) do
     quote do
@@ -96,10 +111,13 @@ defmodule Jev.Server do
   @impl GenServer
   def init({module, arg}) do
     case module.init(arg) do
-      {:ok, inner} -> {:ok, %{module: module, inner: inner, pending: %{}}}
+      {:ok, inner} -> {:ok, wrap(module, inner)}
+      {:ok, inner, extra} -> {:ok, wrap(module, inner), extra}
       other -> other
     end
   end
+
+  defp wrap(module, inner), do: %{module: module, inner: inner, pending: %{}}
 
   @impl GenServer
   def handle_call(request, from, st) do
@@ -131,6 +149,22 @@ defmodule Jev.Server do
 
   def handle_info(message, st) do
     st.module.handle_info(message, st.inner) |> route(st)
+  end
+
+  @impl GenServer
+  def terminate(reason, st) do
+    if function_exported?(st.module, :terminate, 2), do: st.module.terminate(reason, st.inner)
+  end
+
+  @impl GenServer
+  def code_change(old_vsn, st, extra) do
+    if function_exported?(st.module, :code_change, 3) do
+      with {:ok, inner} <- st.module.code_change(old_vsn, st.inner, extra) do
+        {:ok, %{st | inner: inner}}
+      end
+    else
+      {:ok, st}
+    end
   end
 
   @impl GenServer

@@ -112,6 +112,20 @@ acting above 0.9, confirming between 0.5 and 0.9, and escalating below 0.5,
 with stricter thresholds for actions that are harder to reverse. Those are
 three guards.
 
+## Lifecycle
+
+`init/1` may return `{:ok, state, {:continue, term}}` or `{:ok, state, timeout}`
+as with any GenServer, and `handle_continue/2` is delegated. `terminate/2` and
+`code_change/3` are delegated when your module defines them. Two GenServer
+rules carry over unchanged: `terminate/2` runs on a supervisor shutdown only
+if the process traps exits, and a restart starts from `init/1` again.
+
+That second rule matters for requests in flight. A restarted server has an
+empty pending map, so answers to requests the old process sent are dropped.
+Callers blocked in `GenServer.call/3` get the exit they would get from any
+crashed GenServer. Cast-driven work, such as a multi-step descent, is lost
+silently, so keep the position in durable state if a step must not be skipped.
+
 ## Starting a server
 
 `use Jev.Server` defines a `child_spec/1`, so a server goes in a supervision
