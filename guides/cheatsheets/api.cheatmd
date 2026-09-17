@@ -1,0 +1,180 @@
+# API
+
+## Questions
+{: .col-2}
+
+### Shorthands
+
+```elixir
+security: "Is this a vulnerability?"                # Noul
+kind:     {"Kind?", %{bug: "Broken", other: nil}}   # Choice, 2..255
+severity: {"Severity?", ["Low", "Mid", "High"]}     # Score, 2..10
+```
+
+A string or map is a yes/no question. A map of atom labels is a choice. A list of levels is a score.
+
+### Structs
+
+```elixir
+%Jev.Noul{instructions: q, criteria: %{true: "...", false: "..."}}
+%Jev.Choice{instructions: q, criteria: %{label: "..."}}
+%Jev.Score{instructions: q, criteria: ["...", "..."]}
+```
+
+Instructions and every description accept text or a JSON-encodable map.
+
+### Normalize
+
+```elixir
+Jev.questions(kind: {...}, security: "...")
+#=> %{kind: %Jev.Choice{}, security: %Jev.Noul{}}
+```
+
+Raises on an empty list, a reserved name, or bad arity.
+
+### Reserved names
+
+`confidence`, `probabilities`, `usage`, `model`
+
+## Reply
+{: .col-2}
+
+### Shape
+
+```elixir
+%{
+  kind: :bug,          # choice → atom
+  severity: 2.4,       # score  → float
+  security: 0.03,      # noul   → probability
+  confidence: %{kind: 0.91, severity: 0.62},
+  probabilities: %{kind: %{bug: 0.93, ...},
+                   severity: %{0 => 0.1, ...}},
+  usage: %{input_tokens: 812, output_tokens: 0, cost: 3.4e-5},
+  model: "jev-1.13.0"
+}
+```
+
+### Matching
+
+```elixir
+def handle_answer(%{security: p}, tag, s) when p > 0.5
+def handle_answer(%{kind: k, confidence: %{kind: c}}, tag, s) when c > 0.85
+def handle_answer(%{probabilities: %{kind: ps}}, tag, s)
+def handle_answer({:error, %Jev.Error{status: 429}}, tag, s)
+def handle_answer({:error, reason}, tag, s)
+```
+
+### With stdlib
+
+```elixir
+with %{kind: k, confidence: %{kind: c}} when c > 0.85 <- reply, do: act(k)
+Enum.max_by(reply.probabilities.kind, &elem(&1, 1))
+round(reply.severity)
+```
+
+## Server
+{: .col-2}
+
+### Define
+
+```elixir
+defmodule Triage do
+  use Jev.Server
+
+  def init(arg), do: {:ok, %{}}
+  def handle_call(msg, from, s), do: {:reply, {from, state, questions}, s}
+  def handle_answer(reply, from, s), do: ...
+end
+```
+
+### Send to Jev
+
+```elixir
+{:reply, {tag, state, questions}, s}
+{:reply, {tag, state, [questions], [model: "jev-preview"]}, s}
+```
+
+From any callback. The answer arrives at `handle_answer(reply, tag, s)`.
+
+### Other returns
+
+```elixir
+{:noreply, s}
+{:noreply, s, timeout | :hibernate | {:continue, term}}
+{:stop, reason, s}
+```
+
+### Start
+
+```elixir
+Jev.Server.start_link(Triage, arg, name: Triage)
+children = [{Triage, arg}]
+```
+
+### Answer a caller
+
+```elixir
+GenServer.reply(from, result)
+```
+
+## Transport
+{: .col-2}
+
+### Call
+
+```elixir
+Jev.HTTP.post(state, questions, opts \\ [])
+#=> {:ok, reply} | {:error, %Jev.Error{} | exception}
+```
+
+### Options
+
+`model`, `api_key`, `base_url`, `max_retries`, `receive_timeout`, `tag`
+
+### Error
+
+```elixir
+%Jev.Error{status: 422, body: %{...}, request_id: "req_..."}
+```
+
+Retries 429 and 529 with backoff before returning.
+
+## Configuration
+{: .col-2}
+
+### Application
+
+```elixir
+config :jev,
+  api_key: "...",                     # or TYPESAFE_API_KEY
+  base_url: "https://api.typesafe.ai",
+  model: "jev-latest",
+  max_retries: 3,
+  receive_timeout: 30_000,
+  usd_per_million_input: 0.042,
+  req_options: []
+```
+
+### Test
+
+```elixir
+config :jev,
+  api_key: "test",
+  req_options: [plug: {Req.Test, Jev.HTTP}, retry_delay: 0]
+```
+
+## Telemetry
+{: .col-2}
+
+### Events
+
+```elixir
+[:jev, :request, :start]      # system_time
+[:jev, :request, :stop]       # duration, input_tokens, output_tokens, cost
+[:jev, :request, :exception]  # duration
+[:jev, :answer]               # confidence, probability
+```
+
+### Metadata
+
+`model`, `questions`, `state_hash`, `tag`, `status`, `request_id`, `confidence`; per answer `name`, `type`, `answer`.

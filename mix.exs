@@ -1,19 +1,28 @@
 defmodule Jev.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/dannote/jev"
+
   def project do
     [
       app: :jev,
-      version: "0.1.0",
-      elixir: "~> 1.20",
+      version: @version,
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
+      name: "Jev",
+      description: description(),
+      source_url: @source_url,
+      homepage_url: @source_url,
+      package: package(),
+      docs: docs(),
       deps: deps(),
+      elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [plt_add_apps: [:ex_unit]],
       aliases: aliases()
     ]
   end
 
-  # Run "mix help compile.app" to learn about applications.
   def application do
     [
       extra_applications: [:logger],
@@ -27,22 +36,70 @@ defmodule Jev.MixProject do
     ]
   end
 
-  # Run "mix help deps" to learn about dependencies.
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
+
+  defp description do
+    "TypeSafe Jev for OTP: reply to Jev from a GenServer and pattern match on its answer."
+  end
+
   defp deps do
     [
+      {:req, "~> 0.7.4"},
+      {:telemetry, "~> 1.4"},
+      {:plug, "~> 1.20", only: :test},
+      {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.0", only: [:dev, :test], runtime: false},
       {:ex_dna, "~> 1.0", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:vibe_kit, "~> 0.1"},
+      {:vibe_kit, "~> 0.1", only: [:dev, :test], runtime: false},
       {:igniter, "~> 0.6", only: [:dev, :test]}
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]
   end
 
-  defp aliases() do
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => @source_url, "TypeSafe docs" => "https://docs.typesafe.ai"},
+      files: ~w(lib guides .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      source_url: @source_url,
+      source_ref: "v#{@version}",
+      extras: [
+        "README.md",
+        "guides/introduction/getting-started.md",
+        "guides/introduction/why-jev.md",
+        "guides/usage/questions.md",
+        "guides/usage/server.md",
+        "guides/usage/recursive-workflows.md",
+        "guides/usage/telemetry.md",
+        "guides/usage/testing.md",
+        "guides/cheatsheets/api.cheatmd",
+        "CHANGELOG.md",
+        "LICENSE"
+      ],
+      groups_for_extras: [
+        Introduction: ~r/guides\/introduction\//,
+        Usage: ~r/guides\/usage\//,
+        Cheatsheets: ~r/guides\/cheatsheets\//
+      ],
+      groups_for_modules: [
+        Questions: [Jev, Jev.Noul, Jev.Choice, Jev.Score],
+        Server: [Jev.Server],
+        Transport: [Jev.HTTP, Jev.Error]
+      ],
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
+    ]
+  end
+
+  defp aliases do
     [
       ci: [
         "compile --warnings-as-errors",
