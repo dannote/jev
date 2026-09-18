@@ -129,14 +129,21 @@ silently, so keep the position in durable state if a step must not be skipped.
 ## Starting a server
 
 `use Jev.Server` defines a `child_spec/1`, so a server goes in a supervision
-tree like any other child:
+tree like any other child, and takes the same child spec options `use GenServer`
+does:
 
 ```elixir
+use Jev.Server, restart: :temporary   # one server per page under a DynamicSupervisor
+
 children = [
   {Triage, []},
   {Jev.Server, [Locate, page]}   # or explicitly
 ]
 ```
+
+The default `handle_call/3`, `handle_cast/2`, and `handle_info/2` behave like
+GenServer's: an unexpected call or cast stops the server with a "no clause was
+provided" error, and an unexpected message is logged and ignored.
 
 `Jev.Server.start_link/3` takes the module, the init argument, and
 `GenServer.start_link/3` options such as `name:`.

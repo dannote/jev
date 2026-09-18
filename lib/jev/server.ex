@@ -88,18 +88,82 @@ defmodule Jev.Server do
                       terminate: 2,
                       code_change: 3
 
-  defmacro __using__(_opts) do
-    quote do
+  @doc """
+  Adopts the behaviour and defines `child_spec/1`.
+
+  Options are child spec overrides, as with `use GenServer`:
+
+      use Jev.Server, restart: :temporary, shutdown: 10_000
+
+  Default `handle_call/3`, `handle_cast/2`, and `handle_info/2` clauses behave
+  like GenServer's: an unexpected call or cast stops the server with a clear
+  error, and an unexpected message is logged and ignored.
+  """
+  defmacro __using__(opts) do
+    quote location: :keep, bind_quoted: [opts: opts] do
       @behaviour Jev.Server
 
       def child_spec(arg) do
-        %{id: __MODULE__, start: {Jev.Server, :start_link, [__MODULE__, arg]}}
+        default = %{id: __MODULE__, start: {Jev.Server, :start_link, [__MODULE__, arg]}}
+        Supervisor.child_spec(default, unquote(Macro.escape(opts)))
       end
 
-      def handle_info(_message, state), do: {:noreply, state}
+      @doc false
+      def handle_call(msg, _from, state) do
+        # Same trick as GenServer, so Dialyzer accepts the non-local return.
+        case :erlang.phash2(1, 1) do
+          0 ->
+            raise "attempted to call Jev.Server #{inspect(Jev.Server.process_name())} " <>
+                    "but no handle_call/3 clause was provided"
 
-      defoverridable child_spec: 1, handle_info: 2
+          1 ->
+            {:stop, {:bad_call, msg}, state}
+        end
+      end
+
+      @doc false
+      def handle_cast(msg, state) do
+        case :erlang.phash2(1, 1) do
+          0 ->
+            raise "attempted to cast Jev.Server #{inspect(Jev.Server.process_name())} " <>
+                    "but no handle_cast/2 clause was provided"
+
+          1 ->
+            {:stop, {:bad_cast, msg}, state}
+        end
+      end
+
+      @doc false
+      def handle_info(msg, state) do
+        Jev.Server.log_unexpected(__MODULE__, msg)
+        {:noreply, state}
+      end
+
+      defoverridable child_spec: 1, handle_call: 3, handle_cast: 2, handle_info: 2
     end
+  end
+
+  @doc false
+  def process_name do
+    case Process.info(self(), :registered_name) do
+      {_, []} -> self()
+      {_, name} -> name
+    end
+  end
+
+  @doc false
+  def log_unexpected(module, msg) do
+    :logger.error(
+      %{
+        label: {GenServer, :no_handle_info},
+        report: %{module: module, message: msg, name: process_name()}
+      },
+      %{
+        domain: [:otp, :elixir],
+        error_logger: %{tag: :error_msg},
+        report_cb: &GenServer.format_report/1
+      }
+    )
   end
 
   @doc "Starts `module` as a `Jev.Server`. `opts` are `GenServer.start_link/3` options."

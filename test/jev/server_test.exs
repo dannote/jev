@@ -153,14 +153,70 @@ defmodule Jev.ServerTest do
     assert :sys.get_state(pid).inner.asked == [:narrow, :broad]
   end
 
-  test "ordinary messages reach handle_info and the default ignores them" do
+  test "ordinary messages reach handle_info" do
     pid = start_supervised!({Cascade, self()})
     send(pid, :ping)
     assert_receive :pong
+  end
 
-    triage = start_supervised!({Jev.Triage, []})
-    send(triage, :unexpected)
-    assert Process.alive?(triage)
+  describe "defaults, as in GenServer" do
+    test "an unexpected message is logged and ignored" do
+      pid = start_supervised!({Jev.Triage, []})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          send(pid, :unexpected)
+          :sys.get_state(pid)
+        end)
+
+      assert log =~ "received unexpected message in handle_info/2: :unexpected"
+      assert Process.alive?(pid)
+    end
+
+    test "an unexpected call stops the server with a clear error" do
+      pid = start_supervised!({Cascade, self()})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {{%RuntimeError{message: message}, _}, _} =
+                   catch_exit(GenServer.call(pid, :nope))
+
+          assert message =~ "no handle_call/3 clause was provided"
+        end)
+
+      assert log =~ "no handle_call/3 clause"
+    end
+
+    test "an unexpected cast stops the server with a clear error" do
+      pid = start_supervised!({Jev.Triage, []})
+      ref = Process.monitor(pid)
+
+      ExUnit.CaptureLog.capture_log(fn ->
+        GenServer.cast(pid, :nope)
+        assert_receive {:DOWN, ^ref, :process, ^pid, {%RuntimeError{message: message}, _}}
+        assert message =~ "no handle_cast/2 clause was provided"
+      end)
+    end
+  end
+
+  defmodule Temporary do
+    @moduledoc false
+    use Jev.Server, restart: :temporary, shutdown: 1234
+
+    @impl true
+    def init(_), do: {:ok, %{}}
+
+    @impl true
+    def handle_answer(_reply, _tag, s), do: {:noreply, s}
+  end
+
+  test "use options override the child spec" do
+    assert %{
+             restart: :temporary,
+             shutdown: 1234,
+             start: {Jev.Server, :start_link, [Temporary, :x]}
+           } =
+             Temporary.child_spec(:x)
   end
 
   defmodule Lifecycle do
