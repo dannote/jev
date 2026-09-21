@@ -207,10 +207,13 @@ config :jev,
   req_options: []                      # merged into Req.new/1
 ```
 
-In tests, point the transport at a `Req.Test` plug:
+In tests, point the transport at a `Req.Test` plug and answer with `Jev.Test`,
+which writes the response the way you read a reply:
 
 ```elixir
 config :jev, api_key: "test", req_options: [plug: {Req.Test, Jev.HTTP}, retry_delay: 0]
+
+Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, kind: :bug, security: 0.03))
 ```
 
 ## Endpoints

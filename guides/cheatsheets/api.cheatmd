@@ -184,6 +184,32 @@ config :jev,
   req_options: [plug: {Req.Test, Jev.HTTP}, retry_delay: 0]
 ```
 
+## Testing
+{: .col-2}
+
+### Stub a reply
+
+```elixir
+Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, kind: :bug, security: 0.03))
+Req.Test.stub(Jev.HTTP, &Jev.Test.error(&1, 529, "overloaded"))
+```
+
+Answers by question name, plus `confidence`, `probabilities`, `model`, `usage`.
+
+### Read the request
+
+```elixir
+{request, conn} = Jev.Test.request(conn)
+request["state"]
+```
+
+### Pure
+
+```elixir
+Jev.Test.body([kind: :bug], questions)   #=> wire body map
+Jev.confidence(%{a: 0.75, b: 0.25})       #=> 0.5
+```
+
 ## Telemetry
 {: .col-2}
 

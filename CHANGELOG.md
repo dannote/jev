@@ -19,6 +19,12 @@ as TypeSafe. This release lets one application talk to several of them.
   where the API documents numbers, unknown fields are ignored, and
   `Jev.Wire.Response.schema/0` is the JSON Schema of what the client accepts. Adds the
   `json_codec` dependency.
+- `Jev.Test`: `respond/2` answers a `Req.Test` stub from a reply-shaped map, reading the questions
+  from the request; `error/3` sends a failure; `body/2` is the pure half; `request/1` reads the
+  request. `:plug` becomes an optional dependency for these.
+- `Jev.confidence/2` is public: TypeSafe's confidence for a distribution.
+- `[:jev, :answer]` fires only for questions the server answered. A partial reply used to crash the
+  request.
 
 ## 0.1.1 (2026-09-18)
 

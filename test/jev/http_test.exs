@@ -231,6 +231,15 @@ defmodule Jev.HTTPTest do
                       %{name: :security, type: :noul, answer: 0.03}}
     end
 
+    test "emits answer events only for the questions the server answered", %{ref: ref} do
+      Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, security: 0.4))
+
+      {:ok, %{security: 0.4}} = Jev.HTTP.post("state", triage_questions())
+
+      assert_receive {^ref, [:jev, :answer], _, %{name: :security}}
+      refute_receive {^ref, [:jev, :answer], _, %{name: :kind}}
+    end
+
     test "metadata carries the endpoint name", %{ref: ref} do
       Req.Test.stub(Jev.HTTP, &json(&1, 200, triage_body()))
 

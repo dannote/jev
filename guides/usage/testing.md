@@ -32,24 +32,44 @@ if config_env() == :test do
 end
 ```
 
-Then stub responses shaped like the API:
+Then answer with `Jev.Test.respond/2`, which reads the questions from the
+request and writes the response the way you read a reply:
+
+```elixir
+Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, kind: :bug, confidence: %{kind: 0.9}))
+
+assert {:ok, %{kind: :bug, confidence: %{kind: 0.9}}} =
+         Jev.HTTP.post("state", kind: {"Kind?", %{bug: nil, other: nil}})
+```
+
+A choice is its label, a score its value, a yes/no its probability. Give
+`probabilities` when a clause depends on the whole distribution; otherwise
+the body carries the distribution implied by the confidence, so
+`Jev.confidence/2` of what comes back equals what you said. `model` and
+`usage` are reserved keys too, and answers may be partial.
+
+Failures are `Jev.Test.error/3`, which sends a body the client turns into a
+`Jev.Error`, and `Req.Test.transport_error/2` for a connection failure. A stub
+that returns 429 or 529 exercises the retry path:
+
+```elixir
+Req.Test.stub(Jev.HTTP, &Jev.Test.error(&1, 529, "overloaded"))
+```
+
+`Jev.Test.body/2` is the pure half, a wire body from a reply and the
+questions, for tests that do not go through `Req.Test`. `Jev.Test.request/1`
+reads the request out of a `conn`, so a stub can answer differently per state:
 
 ```elixir
 Req.Test.stub(Jev.HTTP, fn conn ->
-  conn
-  |> Plug.Conn.put_resp_content_type("application/json")
-  |> Plug.Conn.send_resp(200, JSON.encode!(%{
-    "model" => "jev-1.13.0",
-    "answers" => %{"kind" => %{"type" => "choice", "choice" => "bug", "confidence" => 0.9, "probabilities" => %{"bug" => 0.9, "other" => 0.1}}},
-    "usage" => %{"input_tokens" => 100, "output_tokens" => 0}
-  }))
+  {request, conn} = Jev.Test.request(conn)
+
+  case request["state"]["title"] do
+    "leak" -> Jev.Test.respond(conn, security: 0.9)
+    _ -> Jev.Test.respond(conn, kind: :bug, security: 0.01)
+  end
 end)
-
-assert {:ok, %{kind: :bug}} = Jev.HTTP.post("state", kind: {"Kind?", %{bug: nil, other: nil}})
 ```
-
-`Req.Test.transport_error/2` simulates a connection failure, and a stub that
-returns 429 or 529 exercises the retry path.
 
 ## Servers
 
@@ -70,9 +90,9 @@ defmodule TriageTest do
 end
 ```
 
-A stub can read the request body to answer differently per call, which is how
-to test a server with several requests in flight or a recursive workflow that
-asks a second question based on the first answer.
+Answering differently per request, as above, is how to test a server with
+several requests in flight or a recursive workflow that asks a second question
+based on the first answer.
 
 ## Live
 

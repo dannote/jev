@@ -204,7 +204,7 @@ defmodule Jev do
 
     acc
     |> Map.put(name, Map.fetch!(labels, label))
-    |> put_in([:confidence, name], confidence(a, probabilities, map_size(criteria)))
+    |> put_in([:confidence, name], answer_confidence(a, probabilities, map_size(criteria)))
     |> put_in([:probabilities, name], probabilities)
   end
 
@@ -214,7 +214,7 @@ defmodule Jev do
 
     acc
     |> Map.put(name, score)
-    |> put_in([:confidence, name], confidence(a, probabilities, length(levels)))
+    |> put_in([:confidence, name], answer_confidence(a, probabilities, length(levels)))
     |> put_in([:probabilities, name], probabilities)
   end
 
@@ -228,14 +228,29 @@ defmodule Jev do
     Map.new(probabilities, fn {key, p} -> {key_fun.(key), p} end)
   end
 
-  # TypeSafe's definition: the top probability, rescaled so that a uniform
-  # distribution over k options is 0 and certainty is 1.
-  defp confidence(%Jev.Wire.Answer{confidence: c}, _probabilities, _k) when is_number(c), do: c
+  @doc """
+  TypeSafe's confidence for a distribution over `options` options.
 
-  defp confidence(_answer, probabilities, k) when map_size(probabilities) > 0 do
+  The top probability, rescaled so that a uniform distribution is 0 and
+  certainty is 1: `(top - 1/k) / (1 - 1/k)`. `options` defaults to the size of
+  the distribution; pass the number of criteria when a server omits options
+  with zero probability.
+
+      iex> Jev.confidence(%{yes: 0.75, no: 0.25})
+      0.5
+  """
+  @spec confidence(%{term() => number()}, pos_integer() | nil) :: float()
+  def confidence(probabilities, options \\ nil) do
+    k = options || map_size(probabilities)
     top = probabilities |> Map.values() |> Enum.max()
     max((top - 1 / k) / (1 - 1 / k), 0.0)
   end
 
-  defp confidence(_answer, _probabilities, _k), do: nil
+  defp answer_confidence(%Jev.Wire.Answer{confidence: c}, _probabilities, _k) when is_number(c),
+    do: c
+
+  defp answer_confidence(_answer, probabilities, k) when map_size(probabilities) > 0,
+    do: confidence(probabilities, k)
+
+  defp answer_confidence(_answer, _probabilities, _k), do: nil
 end

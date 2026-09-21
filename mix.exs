@@ -49,7 +49,7 @@ defmodule Jev.MixProject do
       {:req, "~> 0.7.4"},
       {:json_codec, "~> 0.2.5"},
       {:telemetry, "~> 1.4"},
-      {:plug, "~> 1.20", only: :test},
+      {:plug, "~> 1.14", optional: true},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.0", only: [:dev, :test], runtime: false},
@@ -96,6 +96,7 @@ defmodule Jev.MixProject do
         Questions: [Jev, Jev.Noul, Jev.Choice, Jev.Score],
         Server: [Jev.Server],
         Transport: [Jev.HTTP, Jev.Error],
+        Testing: [Jev.Test],
         Wire: [Jev.Wire, Jev.Wire.Response, Jev.Wire.Answer, Jev.Wire.Usage]
       ],
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
