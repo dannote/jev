@@ -250,14 +250,17 @@ defmodule Jev.HTTP do
     end
   end
 
+  # One event per answered question; a server may leave a question out.
   defp emit_answers(reply, %{questions: questions} = metadata) do
     metadata = Map.delete(metadata, :questions)
 
-    Enum.each(questions, fn {name, type} ->
+    for {name, type} <- questions, is_map_key(reply, name) do
       measurements = answer_measurements(type, name, reply)
       metadata = Map.merge(metadata, %{name: name, type: type, answer: reply[name]})
       :telemetry.execute([:jev, :answer], measurements, metadata)
-    end)
+    end
+
+    :ok
   end
 
   defp answer_measurements(:noul, name, reply), do: %{probability: reply[name]}
