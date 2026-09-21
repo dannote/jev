@@ -70,7 +70,7 @@ defmodule JevTest do
     end
   end
 
-  describe "reply/2" do
+  describe "reply/3" do
     setup do
       %{questions: Jev.questions(Jev.APIStub.triage_questions())}
     end
@@ -108,6 +108,38 @@ defmodule JevTest do
       assert reply.usage == %{input_tokens: 0, output_tokens: 0, cost: 0.0}
     end
 
+    test "computes confidence from the probabilities when the server omits it",
+         %{questions: questions} do
+      body =
+        Jev.APIStub.triage_body(%{
+          "kind" => %{
+            "type" => "choice",
+            "choice" => "bug",
+            "probabilities" => %{"bug" => 0.93, "feature" => 0.04, "other" => 0.03}
+          },
+          "severity" => %{
+            "type" => "score",
+            "score" => 2.3,
+            "probabilities" => %{"0" => 0.1, "1" => 0.1, "2" => 0.2, "3" => 0.6}
+          }
+        })
+
+      %{confidence: %{kind: kind, severity: severity}} = Jev.reply(body, questions)
+      assert_in_delta kind, (0.93 - 1 / 3) / (1 - 1 / 3), 1.0e-9
+      assert_in_delta severity, (0.6 - 1 / 4) / (1 - 1 / 4), 1.0e-9
+    end
+
+    test "confidence is nil when neither it nor probabilities are sent", %{questions: questions} do
+      body = Jev.APIStub.triage_body(%{"kind" => %{"type" => "choice", "choice" => "bug"}})
+      assert %{confidence: %{kind: nil}} = Jev.reply(body, questions)
+    end
+
+    test "prices usage at the given rate", %{questions: questions} do
+      body = Jev.APIStub.triage_body()
+      assert Jev.reply(body, questions, usd_per_million_input: 0).usage.cost == 0
+      assert Jev.reply(body, questions, usd_per_million_input: 1000).usage.cost == 0.812
+    end
+
     test "never creates atoms from the response", %{questions: questions} do
       body =
         Jev.APIStub.triage_body(%{"kind" => %{"type" => "choice", "choice" => "zzz_not_a_label"}})
@@ -116,8 +148,8 @@ defmodule JevTest do
     end
   end
 
-  describe "cost/1" do
-    test "uses the configured price" do
+  describe "cost/2" do
+    test "uses the configured price by default" do
       Application.put_env(:jev, :usd_per_million_input, 1.0)
       on_exit(fn -> Application.delete_env(:jev, :usd_per_million_input) end)
       assert Jev.cost(500_000) == 0.5

@@ -33,6 +33,16 @@ defmodule Jev do
       }
 
   `confidence`, `probabilities`, `usage`, and `model` are reserved question names.
+
+  ## Other models
+
+  The wire format is served by open decision models as well as by TypeSafe,
+  and `reply/3` accepts what they send: `usage` may be missing, and when an
+  answer carries probabilities but no `confidence`, confidence is computed the
+  way TypeSafe defines it, as the top probability normalized over the number
+  of options, `(top - 1/k) / (1 - 1/k)`. Servers are calibrated differently,
+  so a threshold tuned on one model is a starting point on another, not a
+  guarantee.
   """
 
   @typedoc "Text, a JSON-encodable map or list, or `nil`."
@@ -127,13 +137,18 @@ defmodule Jev do
 
   The questions are needed to map labels back to atoms: the criteria keys are
   the only atoms this function can produce, so no atoms are created from input.
+
+  `usd_per_million_input:` prices the usage; it defaults to the configured
+  price, see `cost/2`.
   """
-  @spec reply(map(), questions()) :: reply()
-  def reply(%{"answers" => answers} = body, questions) do
+  @spec reply(map(), questions(), [{:usd_per_million_input, number()}]) :: reply()
+  def reply(%{"answers" => answers} = body, questions, opts \\ []) do
+    price = Keyword.get_lazy(opts, :usd_per_million_input, &configured_price/0)
+
     base = %{
       confidence: %{},
       probabilities: %{},
-      usage: usage(body["usage"]),
+      usage: usage(body["usage"], price),
       model: body["model"]
     }
 
@@ -143,43 +158,63 @@ defmodule Jev do
     end)
   end
 
-  defp usage(usage) do
+  defp usage(usage, price) do
     input = (usage && usage["input_tokens"]) || 0
     output = (usage && usage["output_tokens"]) || 0
-    %{input_tokens: input, output_tokens: output, cost: cost(input)}
+    %{input_tokens: input, output_tokens: output, cost: cost(input, price)}
   end
 
   @doc """
-  The cost in USD of `input_tokens` at the configured price.
+  The cost in USD of `input_tokens` at `usd_per_million_input`.
 
-  Jev bills input tokens only. The price defaults to 0.042 USD per million and
-  can be set with `config :jev, usd_per_million_input: 0.042`.
+  Jev bills input tokens only. The price defaults to TypeSafe's, 0.042 USD per
+  million, and can be set with `config :jev, usd_per_million_input: 0.042`.
+  Named endpoints carry their own price, zero unless configured.
+
+      iex> Jev.cost(500_000, 1.0)
+      0.5
   """
-  @spec cost(non_neg_integer()) :: float()
-  def cost(input_tokens) do
-    input_tokens * Application.get_env(:jev, :usd_per_million_input, 0.042) / 1_000_000
+  @spec cost(non_neg_integer(), number()) :: float()
+  def cost(input_tokens, usd_per_million_input \\ configured_price()) do
+    input_tokens * usd_per_million_input / 1_000_000
   end
+
+  defp configured_price, do: Application.get_env(:jev, :usd_per_million_input, 0.042)
 
   defp put_answer(acc, name, %Jev.Noul{}, %{"noul" => probability}),
     do: Map.put(acc, name, probability)
 
   defp put_answer(acc, name, %Jev.Choice{criteria: criteria}, %{"choice" => label} = answer) do
     labels = Map.new(criteria, fn {atom, _} -> {Atom.to_string(atom), atom} end)
+    probabilities = probabilities(answer, &Map.fetch!(labels, &1))
 
     acc
     |> Map.put(name, Map.fetch!(labels, label))
-    |> put_in([:confidence, name], answer["confidence"])
-    |> put_in([:probabilities, name], probabilities(answer, &Map.fetch!(labels, &1)))
+    |> put_in([:confidence, name], confidence(answer, probabilities, map_size(criteria)))
+    |> put_in([:probabilities, name], probabilities)
   end
 
-  defp put_answer(acc, name, %Jev.Score{}, %{"score" => score} = answer) do
+  defp put_answer(acc, name, %Jev.Score{criteria: levels}, %{"score" => score} = answer) do
+    probabilities = probabilities(answer, &String.to_integer/1)
+
     acc
     |> Map.put(name, score)
-    |> put_in([:confidence, name], answer["confidence"])
-    |> put_in([:probabilities, name], probabilities(answer, &String.to_integer/1))
+    |> put_in([:confidence, name], confidence(answer, probabilities, length(levels)))
+    |> put_in([:probabilities, name], probabilities)
   end
 
   defp probabilities(answer, key_fun) do
     Map.new(answer["probabilities"] || %{}, fn {key, p} -> {key_fun.(key), p} end)
   end
+
+  # TypeSafe's definition: the top probability, rescaled so that a uniform
+  # distribution over k options is 0 and certainty is 1.
+  defp confidence(%{"confidence" => c}, _probabilities, _k) when is_number(c), do: c
+
+  defp confidence(_answer, probabilities, k) when map_size(probabilities) > 0 do
+    top = probabilities |> Map.values() |> Enum.max()
+    max((top - 1 / k) / (1 - 1 / k), 0.0)
+  end
+
+  defp confidence(_answer, _probabilities, _k), do: nil
 end
