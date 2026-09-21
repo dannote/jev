@@ -5,10 +5,10 @@ tag through so a handler can attribute a call to the request that caused it.
 
 | Event | Measurements | Metadata |
 | --- | --- | --- |
-| `[:jev, :request, :start]` | `system_time` | `model`, `questions`, `state_hash`, `tag` |
+| `[:jev, :request, :start]` | `system_time` | `endpoint`, `model`, `questions`, `state_hash`, `tag` |
 | `[:jev, :request, :stop]` | `duration`, `input_tokens`, `output_tokens`, `cost` | plus `status`, `request_id`, `confidence` |
 | `[:jev, :request, :exception]` | `duration` | plus `kind`, `reason`, `stacktrace` |
-| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, `model`, `state_hash`, `tag` |
+| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, `endpoint`, `model`, `state_hash`, `tag` |
 
 `questions` is a map of question name to type. `confidence` on the stop event
 is the reply's confidence map. `[:jev, :answer]` fires once per question after
@@ -23,12 +23,15 @@ way to attribute a slow or expensive call when a server has many in flight.
 
 ## Cost
 
-`cost` is input tokens at the configured price. Jev bills input only, at 0.042
+`cost` is input tokens at the endpoint's price. Jev bills input only, at 0.042
 USD per million tokens at the time of writing:
 
 ```elixir
 config :jev, usd_per_million_input: 0.042
 ```
+
+A named endpoint has its own `usd_per_million_input`, zero by default, so a
+`sum` of `cost` tagged by `endpoint` is the bill per model.
 
 ## Metrics
 
@@ -40,14 +43,16 @@ sum("jev.request.stop.cost"),
 sum("jev.request.stop.input_tokens"),
 counter("jev.request.exception.duration", tags: [:kind]),
 distribution("jev.answer.confidence",
-  tags: [:name],
+  tags: [:name, :endpoint],
   reporter_options: [buckets: [0.5, 0.7, 0.85, 0.95]]
 )
 ```
 
 The last one is a calibration monitor. If a question's confidence
 distribution shifts, the question or the state serialization changed, or the
-model did. The `model` metadata tells you which.
+model did. The `model` metadata tells you which. Tagged by `endpoint`, it
+also shows how differently two models are calibrated on the same question,
+which is what decides where a cascade's escalation threshold goes.
 
 ## Evaluation harness
 

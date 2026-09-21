@@ -35,6 +35,23 @@ then need their own brackets:
 {:reply, {tag, state, [kind: {"Which?", %{a: nil, b: nil}}], [model: "jev-preview"]}, s}
 ```
 
+`endpoint:` is the option that picks a server. The wire format is spoken by
+self-hosted decision models as well as TypeSafe, and one server can talk to
+several:
+
+```elixir
+config :jev, endpoints: [laya: [base_url: "http://localhost:8000"]]
+
+{:reply, {tag, state, [kind: {"Which?", %{a: nil, b: nil}}], [endpoint: :laya]}, s}
+```
+
+A named endpoint sends no API key unless it has one and costs nothing unless
+given a price; the rest is in `Jev.HTTP`. The reply has the same shape from
+every endpoint, so `handle_answer/3` clauses do not know which model answered
+unless they match on `model`. They may want to: the
+[Recursive Workflows](recursive-workflows.md) guide escalates from a local
+model to Jev when confidence is low.
+
 The other return values are the GenServer ones: `{:noreply, s}`,
 `{:noreply, s, timeout | :hibernate | {:continue, term}}`, and
 `{:stop, reason, s}`.

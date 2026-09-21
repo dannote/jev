@@ -23,6 +23,15 @@ config :jev, api_key: System.fetch_env!("TYPESAFE_API_KEY")
 
 Keys come from the [TypeSafe dashboard](https://docs.typesafe.ai/introduction/quickstart).
 
+Without a key, a self-hosted model that speaks the same wire format works
+too. Name it as an endpoint and make it the default:
+
+```elixir
+config :jev, endpoint: :laya, endpoints: [laya: [base_url: "http://localhost:8000"]]
+```
+
+Endpoints are covered in the [Server](../usage/server.md) guide.
+
 ## First call
 
 `Jev.HTTP.post/3` sends questions about a piece of state and returns a plain map:

@@ -48,6 +48,9 @@ defmodule Jev.Server do
 
       {:reply, {tag, state, [kind: {"Which?", %{a: nil, b: nil}}], [model: "jev-preview"]}, s}
 
+  `endpoint:` picks a named server from `config :jev, endpoints:`, for a
+  self-hosted model that speaks the same wire format. See `Jev.HTTP`.
+
   Built the way `GenStage` and `Agent` are built: this module owns the real
   GenServer callbacks and delegates to yours, so `:sys.get_state/1`, Observer,
   and every GenServer option keep working. `c:init/1` may return a timeout or

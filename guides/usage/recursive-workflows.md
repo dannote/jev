@@ -101,16 +101,22 @@ end
 
 ## Cascade
 
-Ask a broad question; if unsure, ask a narrower one, possibly of a different
-model. The tag records the stage:
+Ask a cheap model first; if unsure, ask a better one. The tag records the
+stage. With a self-hosted model configured as an endpoint, the first stage is
+free and local, and Jev only sees the hard cases:
 
 ```elixir
-def handle_answer(%{kind: k, confidence: %{kind: c}}, {:broad, text}, s) when c < 0.5 do
-  {:reply, {{:narrow, text}, text, [kind: {"Which fits better?", top_two(k)}], [model: "jev-preview"]}, s}
-end
+def handle_call({:classify, text}, from, s),
+  do: {:reply, {{:local, from, text}, text, [kind: @kinds], [endpoint: :laya]}, s}
 
-def handle_answer(%{kind: k}, {_stage, text}, s), do: classified(text, k, s)
+def handle_answer(%{confidence: %{kind: c}}, {:local, from, text}, s) when c < 0.7,
+  do: {:reply, {{:jev, from, text}, text, kind: @kinds}, s}
+
+def handle_answer(%{kind: k}, {_stage, from, _text}, s), do: classified(from, k, s)
 ```
+
+The same shape narrows a question instead of changing the model: when a broad
+choice is unsure, ask again with only the top two options.
 
 ## Crawling
 

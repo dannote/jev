@@ -92,6 +92,7 @@ end
 ```elixir
 {:reply, {tag, state, questions}, s}
 {:reply, {tag, state, [questions], [model: "jev-preview"]}, s}
+{:reply, {tag, state, [questions], [endpoint: :laya]}, s}
 ```
 
 From any callback. The answer arrives at `handle_answer(reply, tag, s)`.
@@ -129,12 +130,19 @@ Jev.HTTP.post(state, questions, opts \\ [])
 
 ### Options
 
-`model`, `api_key`, `base_url`, `max_retries`, `receive_timeout`, `tag`
+`endpoint`, `model`, `api_key`, `base_url`, `max_retries`, `receive_timeout`, `tag`
+
+### Endpoints
+
+```elixir
+Jev.HTTP.endpoint(endpoint: :laya)
+#=> %{name: :laya, base_url: "...", api_key: nil, model: "jev-latest", usd_per_million_input: 0.0, ...}
+```
 
 ### Error
 
 ```elixir
-%Jev.Error{status: 422, body: %{...}, request_id: "req_..."}
+%Jev.Error{status: 422, body: %{...}, request_id: "req_...", endpoint: :typesafe}
 ```
 
 Retries 429 and 529 with backoff before returning.
@@ -154,6 +162,19 @@ config :jev,
   usd_per_million_input: 0.042,
   req_options: []
 ```
+
+### Named endpoints
+
+```elixir
+config :jev,
+  endpoint: :typesafe,                # the default
+  endpoints: [
+    laya: [base_url: "http://localhost:8000"],
+    jeff: [base_url: "...", api_key: "...", model: "...", usd_per_million_input: 0.007]
+  ]
+```
+
+No key sent and zero cost unless given. Transport settings inherited.
 
 ### Test
 
@@ -177,4 +198,4 @@ config :jev,
 
 ### Metadata
 
-`model`, `questions`, `state_hash`, `tag`, `status`, `request_id`, `confidence`; per answer `name`, `type`, `answer`.
+`endpoint`, `model`, `questions`, `state_hash`, `tag`, `status`, `request_id`, `confidence`; per answer `name`, `type`, `answer`.

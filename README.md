@@ -2,7 +2,7 @@
 
 [![Hex.pm](https://img.shields.io/hexpm/v/jev.svg)](https://hex.pm/packages/jev) [![Documentation](https://img.shields.io/badge/documentation-gray)](https://hexdocs.pm/jev) [![CI](https://github.com/dannote/jev/actions/workflows/ci.yml/badge.svg)](https://github.com/dannote/jev/actions/workflows/ci.yml)
 
-[TypeSafe Jev](https://docs.typesafe.ai) for OTP.
+[TypeSafe Jev](https://docs.typesafe.ai) and compatible decision models for OTP.
 
 Jev is a peer process. You reply to it from a GenServer, and its answer is a
 message you pattern match on.
@@ -53,6 +53,9 @@ end
 ```elixir
 config :jev, api_key: System.get_env("TYPESAFE_API_KEY")   # or just set TYPESAFE_API_KEY
 ```
+
+Or, without a key, point at a self-hosted model that speaks the same wire format,
+see [Endpoints](#endpoints).
 
 Requires Elixir 1.18 or later, for the built-in `JSON` module, and Erlang/OTP 27 or later.
 
@@ -170,10 +173,10 @@ come back as `{:error, %Jev.Error{status: status, body: body, request_id: id}}`.
 
 | Event | Measurements | Metadata |
 | --- | --- | --- |
-| `[:jev, :request, :start]` | `system_time` | `model`, `questions`, `state_hash`, `tag` |
+| `[:jev, :request, :start]` | `system_time` | `endpoint`, `model`, `questions`, `state_hash`, `tag` |
 | `[:jev, :request, :stop]` | `duration`, `input_tokens`, `output_tokens`, `cost` | plus `status`, `request_id`, `confidence` |
 | `[:jev, :request, :exception]` | `duration` | plus `kind`, `reason`, `stacktrace` |
-| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, `state_hash`, `tag` |
+| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, `endpoint`, `model`, `state_hash`, `tag` |
 
 The state is never in metadata, only its hash. A distribution on
 `jev.answer.confidence` tagged by `name` is a calibration monitor:
@@ -185,7 +188,8 @@ summary("jev.request.stop.duration", unit: {:native, :millisecond})
 ```
 
 Cost is input tokens at `config :jev, usd_per_million_input: 0.042`, Jev's
-published price. It bills no output tokens.
+published price. It bills no output tokens. Named endpoints carry their own
+price, zero unless configured.
 
 ## Configuration
 
@@ -204,6 +208,54 @@ In tests, point the transport at a `Req.Test` plug:
 
 ```elixir
 config :jev, api_key: "test", req_options: [plug: {Req.Test, Jev.HTTP}, retry_delay: 0]
+```
+
+## Endpoints
+
+The `/v1/systemone` wire format has become the common shape for decision
+models. Open ones such as [Laya](https://huggingface.co/convaiinnovations/laya),
+[kev](https://github.com/jaredpalmer/kev), [decider](https://github.com/Mapika/decider),
+and [jeff](https://github.com/logan-markewich/jeff) serve it, and
+[JevBench](https://github.com/fstandhartinger/jevbench) ranks them against Jev.
+Name them, and pick one per call:
+
+```elixir
+config :jev,
+  endpoints: [
+    laya: [base_url: "http://localhost:8000"],
+    jeff: [base_url: "https://jeff.internal", api_key: "...", model: "gliformer-large",
+           usd_per_million_input: 0.007]
+  ]
+
+{:reply, {tag, state, [kind: @kinds], [endpoint: :laya]}, s}   # from a Jev.Server
+Jev.HTTP.post(state, questions, endpoint: :laya)             # directly
+```
+
+The top-level configuration is the `:typesafe` endpoint and the default;
+`config :jev, endpoint: :laya` makes a named one the default, which is how a
+development environment runs without a key. A named endpoint never inherits
+the TypeSafe key or price: with no `api_key` it sends no `Authorization`
+header, and its cost is zero unless it has a `usd_per_million_input`.
+Transport settings (`max_retries`, `receive_timeout`, `req_options`) are
+inherited and can be overridden. `Jev.HTTP.endpoint/1` shows the result.
+
+Replies from any endpoint have the same shape. When a server omits
+`confidence`, it is computed from the probabilities the way TypeSafe defines
+it. Models are calibrated differently, so a threshold tuned on one is a
+starting point on another; the `[:jev, :answer]` telemetry event carries the
+`endpoint`, so one histogram per endpoint shows the difference.
+
+The natural use is a cascade. Ask the local model first and escalate to Jev
+when it is unsure:
+
+```elixir
+def handle_call({:classify, text}, from, s),
+  do: {:reply, {{:local, from, text}, text, [kind: @kinds], [endpoint: :laya]}, s}
+
+def handle_answer(%{confidence: %{kind: c}}, {:local, from, text}, s) when c < 0.7,
+  do: {:reply, {{:jev, from, text}, text, kind: @kinds}, s}
+
+def handle_answer(%{kind: k}, {_stage, from, _text}, s), do: done(from, k, s)
 ```
 
 ## Development
