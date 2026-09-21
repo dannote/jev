@@ -30,7 +30,7 @@ too. Name it as an endpoint and make it the default:
 config :jev, endpoint: :laya, endpoints: [laya: [base_url: "http://localhost:8000"]]
 ```
 
-Endpoints are covered in the [Server](../usage/server.md) guide.
+Endpoints are covered in the [Server](server.md) guide.
 
 ## First call
 

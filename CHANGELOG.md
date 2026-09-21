@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0 (2026-09-21)
+
+The `/v1/systemone` wire format is now served by open decision models as well
+as TypeSafe. This release lets one application talk to several of them.
+
+- Named endpoints: `config :jev, endpoints: [laya: [base_url: ...]]` and `endpoint: :laya`
+  per call, from `Jev.HTTP.post/3` or a `Jev.Server` reply. `config :jev, endpoint:` changes
+  the default from `:typesafe`. `Jev.HTTP.endpoint/1` returns the resolved settings.
+- A named endpoint sends no `Authorization` header unless it has an `api_key`, and its
+  `usd_per_million_input` defaults to zero. Transport settings are inherited from the
+  top-level configuration.
+- `Jev.reply/3` and `Jev.cost/2` take the price. When a server omits `confidence`, it is
+  computed from the probabilities as TypeSafe defines it.
+- Telemetry metadata and `Jev.Error` carry the `endpoint` name.
+
 ## 0.1.1 (2026-09-18)
 
 - `Jev.Server` accepts `{:ok, state, timeout | {:continue, term}}` from `init/1`. Previously the

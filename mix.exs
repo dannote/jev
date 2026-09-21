@@ -1,7 +1,7 @@
 defmodule Jev.MixProject do
   use Mix.Project
 
-  @version "0.1.1"
+  @version "0.2.0"
   @source_url "https://github.com/dannote/jev"
 
   def project do
@@ -40,7 +40,8 @@ defmodule Jev.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp description do
-    "TypeSafe Jev for OTP: reply to Jev from a GenServer and pattern match on its answer."
+    "TypeSafe Jev and compatible decision models for OTP: reply to Jev from a GenServer " <>
+      "and pattern match on its answer."
   end
 
   defp deps do
