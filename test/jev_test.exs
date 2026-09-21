@@ -140,6 +140,55 @@ defmodule JevTest do
       assert Jev.reply(body, questions, usd_per_million_input: 1000).usage.cost == 0.812
     end
 
+    test "accepts integers where the API documents numbers", %{questions: questions} do
+      body =
+        Jev.APIStub.triage_body(%{
+          "security" => %{"type" => "noul", "noul" => 1},
+          "severity" => %{"type" => "score", "score" => 3, "probabilities" => %{"3" => 1}}
+        })
+
+      assert %{security: 1, severity: 3, confidence: %{severity: 1.0}} =
+               Jev.reply(body, questions)
+    end
+
+    test "ignores fields it does not know", %{questions: questions} do
+      body =
+        Jev.APIStub.triage_body(%{
+          "security" => %{"type" => "noul", "noul" => 0.2, "act" => true, "latency_ms" => 12}
+        })
+        |> Map.put("request_id", "abc")
+
+      assert %{security: 0.2} = Jev.reply(body, questions)
+    end
+
+    test "a body that does not fit the wire format is a JSONCodec.Error", %{questions: questions} do
+      body = Jev.APIStub.triage_body(%{"security" => %{"type" => "noul", "noul" => "high"}})
+
+      error = assert_raise JSONCodec.Error, fn -> Jev.reply(body, questions) end
+      assert %JSONCodec.Error{path: [:noul], expected: :number, got: "high"} = error
+
+      assert_raise JSONCodec.Error, ~r/missing_required_field/, fn ->
+        Jev.reply(%{"model" => "x"}, questions)
+      end
+
+      assert_raise JSONCodec.Error, fn ->
+        Jev.reply(Jev.APIStub.triage_body(%{"kind" => %{"type" => "verdict"}}), questions)
+      end
+    end
+
+    test "an answer of the wrong kind for its question raises", %{questions: questions} do
+      body = Jev.APIStub.triage_body(%{"kind" => %{"type" => "noul", "noul" => 0.5}})
+
+      assert_raise ArgumentError, ~r/answer for :kind is :noul.*Jev.Choice/, fn ->
+        Jev.reply(body, questions)
+      end
+    end
+
+    test "takes an already decoded Jev.Wire.Response", %{questions: questions} do
+      wire = Jev.Wire.Response.from_map!(Jev.APIStub.triage_body())
+      assert Jev.reply(wire, questions) == Jev.reply(Jev.APIStub.triage_body(), questions)
+    end
+
     test "never creates atoms from the response", %{questions: questions} do
       body =
         Jev.APIStub.triage_body(%{"kind" => %{"type" => "choice", "choice" => "zzz_not_a_label"}})

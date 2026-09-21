@@ -167,7 +167,10 @@ evaluation harnesses:
 ```
 
 It retries 429 and 529 with backoff, honouring `Retry-After`. Non-2xx responses
-come back as `{:error, %Jev.Error{status: status, body: body, request_id: id}}`.
+come back as `{:error, %Jev.Error{status: status, body: body, request_id: id}}`,
+and a 200 whose body does not fit the wire format as `{:error, %JSONCodec.Error{}}`.
+The wire format itself is `Jev.Wire`, a set of [JSONCodec](https://hex.pm/packages/json_codec)
+structs; `Jev.Wire.Response.schema/0` is its JSON Schema.
 
 ## Telemetry
 

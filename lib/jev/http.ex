@@ -87,12 +87,13 @@ defmodule Jev.HTTP do
   Evaluates `questions` against `state`.
 
   Returns `{:ok, reply}` with the map described in `Jev`, or `{:error, error}`
-  where `error` is a `Jev.Error` for a non-2xx response or the transport
-  exception. Raises `ArgumentError` for malformed questions, an unknown
-  endpoint, or a missing TypeSafe API key.
+  where `error` is a `Jev.Error` for a non-2xx response, a `JSONCodec.Error`
+  for a 200 whose body does not fit `Jev.Wire`, or the transport exception.
+  Raises `ArgumentError` for malformed questions, an unknown endpoint, or a
+  missing TypeSafe API key.
   """
   @spec post(Jev.entry(), keyword(Jev.shorthand()) | %{atom() => Jev.shorthand()}, [option()]) ::
-          {:ok, Jev.reply()} | {:error, Jev.Error.t() | Exception.t()}
+          {:ok, Jev.reply()} | {:error, Jev.Error.t() | JSONCodec.Error.t() | Exception.t()}
   def post(state, questions, opts \\ []) do
     questions = Jev.questions(questions)
     endpoint = endpoint(opts)
@@ -204,9 +205,10 @@ defmodule Jev.HTTP do
 
     case Req.post(request, url: "/v1/systemone", body: body) do
       {:ok, %Req.Response{status: 200, body: body} = response} ->
-        price = endpoint.usd_per_million_input
-        reply = Jev.reply(JSON.decode!(body), questions, usd_per_million_input: price)
-        {:ok, reply, request_id(response)}
+        with {:ok, wire} <- Jev.Wire.Response.from_map(JSON.decode!(body)) do
+          price = endpoint.usd_per_million_input
+          {:ok, Jev.reply(wire, questions, usd_per_million_input: price), request_id(response)}
+        end
 
       {:ok, %Req.Response{status: status, body: body} = response} ->
         error = %Jev.Error{

@@ -14,6 +14,11 @@ as TypeSafe. This release lets one application talk to several of them.
 - `Jev.reply/3` and `Jev.cost/2` take the price. When a server omits `confidence`, it is
   computed from the probabilities as TypeSafe defines it.
 - Telemetry metadata and `Jev.Error` carry the `endpoint` name.
+- `Jev.Wire`: the response body as `JSONCodec` structs. A 200 whose body does not fit the wire
+  format comes back as `{:error, %JSONCodec.Error{}}` instead of a crash, integers are accepted
+  where the API documents numbers, unknown fields are ignored, and
+  `Jev.Wire.Response.schema/0` is the JSON Schema of what the client accepts. Adds the
+  `json_codec` dependency.
 
 ## 0.1.1 (2026-09-18)
 

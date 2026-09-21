@@ -86,6 +86,7 @@ tag, so a clause knows which caller, page, or step it belongs to. The
 Every failure arrives at `handle_answer/3` as `{:error, reason}`:
 
 - a non-2xx response after retries, as `{:error, %Jev.Error{status: status, body: body, request_id: id}}`
+- a 200 whose body does not fit the wire format, as `{:error, %JSONCodec.Error{path: path}}`
 - a transport failure, as `{:error, %Req.TransportError{}}` or another exception
 - a crashed request, for example state that cannot be encoded, as `{:error, {exception, stacktrace}}`
 

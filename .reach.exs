@@ -2,7 +2,17 @@
 # and the transport never reaches the server. Jev.Server sits on top of both.
 [
   layers: [
-    pure: ["Jev", "Jev.Noul", "Jev.Choice", "Jev.Score", "Jev.Error"],
+    pure: [
+      "Jev",
+      "Jev.Noul",
+      "Jev.Choice",
+      "Jev.Score",
+      "Jev.Error",
+      "Jev.Wire",
+      "Jev.Wire.Response",
+      "Jev.Wire.Answer",
+      "Jev.Wire.Usage"
+    ],
     transport: "Jev.HTTP",
     server: ["Jev.Server", "Jev.Application"]
   ],

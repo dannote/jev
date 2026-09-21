@@ -125,7 +125,7 @@ GenServer.reply(from, result)
 
 ```elixir
 Jev.HTTP.post(state, questions, opts \\ [])
-#=> {:ok, reply} | {:error, %Jev.Error{} | exception}
+#=> {:ok, reply} | {:error, %Jev.Error{} | %JSONCodec.Error{} | exception}
 ```
 
 ### Options

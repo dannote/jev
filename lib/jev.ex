@@ -16,8 +16,9 @@ defmodule Jev do
       def handle_answer(%{kind: k}, from, s), do: done(from, [k, :"needs-triage"], s)
 
   This module holds the pure half: `questions/1` normalizes shorthands into
-  `Jev.Noul`, `Jev.Choice`, and `Jev.Score` structs, and `reply/2` turns a
-  decoded API response into the reply map. `Jev.HTTP.post/3` is the transport.
+  `Jev.Noul`, `Jev.Choice`, and `Jev.Score` structs, and `reply/3` turns a
+  decoded API response into the reply map. `Jev.Wire` describes the response
+  body, and `Jev.HTTP.post/3` is the transport.
 
   ## The reply map
 
@@ -37,12 +38,13 @@ defmodule Jev do
   ## Other models
 
   The wire format is served by open decision models as well as by TypeSafe,
-  and `reply/3` accepts what they send: `usage` may be missing, and when an
-  answer carries probabilities but no `confidence`, confidence is computed the
-  way TypeSafe defines it, as the top probability normalized over the number
-  of options, `(top - 1/k) / (1 - 1/k)`. Servers are calibrated differently,
-  so a threshold tuned on one model is a starting point on another, not a
-  guarantee.
+  and `reply/3` accepts what they send: `usage` may be missing, unknown fields
+  are ignored, and when an answer carries probabilities but no `confidence`,
+  confidence is computed the way TypeSafe defines it, as the top probability
+  normalized over the number of options, `(top - 1/k) / (1 - 1/k)`. A body
+  that does not fit `Jev.Wire` at all is a `JSONCodec.Error` naming the field.
+  Servers are calibrated differently, so a threshold tuned on one model is a
+  starting point on another, not a guarantee.
   """
 
   @typedoc "Text, a JSON-encodable map or list, or `nil`."
@@ -133,34 +135,45 @@ defmodule Jev do
   end
 
   @doc """
-  Turns a decoded API response body into the reply map.
+  Turns a response body into the reply map.
+
+  The body is a decoded JSON map or an already decoded `Jev.Wire.Response`.
+  A map that does not fit the wire format raises `JSONCodec.Error`.
 
   The questions are needed to map labels back to atoms: the criteria keys are
   the only atoms this function can produce, so no atoms are created from input.
+  An answer whose kind does not match its question raises `ArgumentError`.
 
   `usd_per_million_input:` prices the usage; it defaults to the configured
   price, see `cost/2`.
   """
-  @spec reply(map(), questions(), [{:usd_per_million_input, number()}]) :: reply()
-  def reply(%{"answers" => answers} = body, questions, opts \\ []) do
+  @spec reply(map() | Jev.Wire.Response.t(), questions(), [{:usd_per_million_input, number()}]) ::
+          reply()
+  def reply(body, questions, opts \\ [])
+
+  def reply(%Jev.Wire.Response{} = wire, questions, opts) do
     price = Keyword.get_lazy(opts, :usd_per_million_input, &configured_price/0)
 
     base = %{
       confidence: %{},
       probabilities: %{},
-      usage: usage(body["usage"], price),
-      model: body["model"]
+      usage: usage(wire.usage, price),
+      model: wire.model
     }
 
-    Enum.reduce(answers, base, fn {name, answer}, acc ->
+    Enum.reduce(wire.answers, base, fn {name, answer}, acc ->
       name = String.to_existing_atom(name)
       put_answer(acc, name, Map.fetch!(questions, name), answer)
     end)
   end
 
-  defp usage(usage, price) do
-    input = (usage && usage["input_tokens"]) || 0
-    output = (usage && usage["output_tokens"]) || 0
+  def reply(%{} = body, questions, opts) do
+    reply(Jev.Wire.Response.from_map!(body), questions, opts)
+  end
+
+  defp usage(nil, price), do: usage(%Jev.Wire.Usage{}, price)
+
+  defp usage(%Jev.Wire.Usage{input_tokens: input, output_tokens: output}, price) do
     %{input_tokens: input, output_tokens: output, cost: cost(input, price)}
   end
 
@@ -181,35 +194,43 @@ defmodule Jev do
 
   defp configured_price, do: Application.get_env(:jev, :usd_per_million_input, 0.042)
 
-  defp put_answer(acc, name, %Jev.Noul{}, %{"noul" => probability}),
-    do: Map.put(acc, name, probability)
+  defp put_answer(acc, name, %Jev.Noul{}, %Jev.Wire.Answer{noul: p}) when is_number(p),
+    do: Map.put(acc, name, p)
 
-  defp put_answer(acc, name, %Jev.Choice{criteria: criteria}, %{"choice" => label} = answer) do
+  defp put_answer(acc, name, %Jev.Choice{criteria: criteria}, %Jev.Wire.Answer{choice: label} = a)
+       when is_binary(label) do
     labels = Map.new(criteria, fn {atom, _} -> {Atom.to_string(atom), atom} end)
-    probabilities = probabilities(answer, &Map.fetch!(labels, &1))
+    probabilities = probabilities(a, &Map.fetch!(labels, &1))
 
     acc
     |> Map.put(name, Map.fetch!(labels, label))
-    |> put_in([:confidence, name], confidence(answer, probabilities, map_size(criteria)))
+    |> put_in([:confidence, name], confidence(a, probabilities, map_size(criteria)))
     |> put_in([:probabilities, name], probabilities)
   end
 
-  defp put_answer(acc, name, %Jev.Score{criteria: levels}, %{"score" => score} = answer) do
-    probabilities = probabilities(answer, &String.to_integer/1)
+  defp put_answer(acc, name, %Jev.Score{criteria: levels}, %Jev.Wire.Answer{score: score} = a)
+       when is_number(score) do
+    probabilities = probabilities(a, &String.to_integer/1)
 
     acc
     |> Map.put(name, score)
-    |> put_in([:confidence, name], confidence(answer, probabilities, length(levels)))
+    |> put_in([:confidence, name], confidence(a, probabilities, length(levels)))
     |> put_in([:probabilities, name], probabilities)
   end
 
-  defp probabilities(answer, key_fun) do
-    Map.new(answer["probabilities"] || %{}, fn {key, p} -> {key_fun.(key), p} end)
+  defp put_answer(_acc, name, %question{}, %Jev.Wire.Answer{type: type}) do
+    raise ArgumentError,
+          "answer for #{inspect(name)} is #{inspect(type)}, but the question is a " <>
+            inspect(question)
+  end
+
+  defp probabilities(%Jev.Wire.Answer{probabilities: probabilities}, key_fun) do
+    Map.new(probabilities, fn {key, p} -> {key_fun.(key), p} end)
   end
 
   # TypeSafe's definition: the top probability, rescaled so that a uniform
   # distribution over k options is 0 and certainty is 1.
-  defp confidence(%{"confidence" => c}, _probabilities, _k) when is_number(c), do: c
+  defp confidence(%Jev.Wire.Answer{confidence: c}, _probabilities, _k) when is_number(c), do: c
 
   defp confidence(_answer, probabilities, k) when map_size(probabilities) > 0 do
     top = probabilities |> Map.values() |> Enum.max()

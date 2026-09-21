@@ -47,6 +47,7 @@ defmodule Jev.MixProject do
   defp deps do
     [
       {:req, "~> 0.7.4"},
+      {:json_codec, "~> 0.2.5"},
       {:telemetry, "~> 1.4"},
       {:plug, "~> 1.20", only: :test},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
@@ -94,7 +95,8 @@ defmodule Jev.MixProject do
       groups_for_modules: [
         Questions: [Jev, Jev.Noul, Jev.Choice, Jev.Score],
         Server: [Jev.Server],
-        Transport: [Jev.HTTP, Jev.Error]
+        Transport: [Jev.HTTP, Jev.Error],
+        Wire: [Jev.Wire, Jev.Wire.Response, Jev.Wire.Answer, Jev.Wire.Usage]
       ],
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
     ]

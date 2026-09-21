@@ -79,6 +79,13 @@ defmodule Jev.HTTPTest do
     assert {:ok, %{kind: :bug}} = Jev.HTTP.post("state", triage_questions())
   end
 
+  test "a 200 that does not fit the wire format is returned as a JSONCodec.Error" do
+    Req.Test.stub(Jev.HTTP, &json(&1, 200, %{"answers" => %{"security" => %{"noul" => "yes"}}}))
+
+    assert {:error, %JSONCodec.Error{path: [:noul], got: "yes"}} =
+             Jev.HTTP.post("state", security: "Vuln?")
+  end
+
   test "transport errors are returned, not raised" do
     Req.Test.stub(Jev.HTTP, &Req.Test.transport_error(&1, :econnrefused))
 
