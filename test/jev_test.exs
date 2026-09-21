@@ -50,7 +50,7 @@ defmodule JevTest do
     end
 
     test "encodes to the wire format" do
-      questions = Jev.questions(Jev.APIStub.triage_questions())
+      questions = Jev.questions(Jev.Fixture.questions())
       wire = questions |> JSON.encode!() |> JSON.decode!()
 
       assert wire["kind"] == %{
@@ -72,11 +72,11 @@ defmodule JevTest do
 
   describe "reply/3" do
     setup do
-      %{questions: Jev.questions(Jev.APIStub.triage_questions())}
+      %{questions: Jev.questions(Jev.Fixture.questions())}
     end
 
     test "maps every answer type", %{questions: questions} do
-      reply = Jev.reply(Jev.APIStub.triage_body(), questions)
+      reply = Jev.reply(Jev.Fixture.body(), questions)
 
       assert reply.kind == :bug
       assert reply.severity == 2.4
@@ -90,14 +90,14 @@ defmodule JevTest do
 
     test "is a plain map that pattern matches", %{questions: questions} do
       assert %{kind: :bug, confidence: %{kind: c}} =
-               Jev.reply(Jev.APIStub.triage_body(), questions)
+               Jev.reply(Jev.Fixture.body(), questions)
 
       assert c > 0.85
     end
 
     test "tolerates missing probabilities and usage", %{questions: questions} do
       body =
-        Jev.APIStub.triage_body(%{
+        Jev.Fixture.body(%{
           "kind" => %{"type" => "choice", "choice" => "other", "confidence" => 0.5}
         })
         |> Map.delete("usage")
@@ -111,7 +111,7 @@ defmodule JevTest do
     test "computes confidence from the probabilities when the server omits it",
          %{questions: questions} do
       body =
-        Jev.APIStub.triage_body(%{
+        Jev.Fixture.body(%{
           "kind" => %{
             "type" => "choice",
             "choice" => "bug",
@@ -130,19 +130,19 @@ defmodule JevTest do
     end
 
     test "confidence is nil when neither it nor probabilities are sent", %{questions: questions} do
-      body = Jev.APIStub.triage_body(%{"kind" => %{"type" => "choice", "choice" => "bug"}})
+      body = Jev.Fixture.body(%{"kind" => %{"type" => "choice", "choice" => "bug"}})
       assert %{confidence: %{kind: nil}} = Jev.reply(body, questions)
     end
 
     test "prices usage at the given rate", %{questions: questions} do
-      body = Jev.APIStub.triage_body()
+      body = Jev.Fixture.body()
       assert Jev.reply(body, questions, usd_per_million_input: 0).usage.cost == 0
       assert Jev.reply(body, questions, usd_per_million_input: 1000).usage.cost == 0.812
     end
 
     test "accepts integers where the API documents numbers", %{questions: questions} do
       body =
-        Jev.APIStub.triage_body(%{
+        Jev.Fixture.body(%{
           "security" => %{"type" => "noul", "noul" => 1},
           "severity" => %{"type" => "score", "score" => 3, "probabilities" => %{"3" => 1}}
         })
@@ -153,7 +153,7 @@ defmodule JevTest do
 
     test "ignores fields it does not know", %{questions: questions} do
       body =
-        Jev.APIStub.triage_body(%{
+        Jev.Fixture.body(%{
           "security" => %{"type" => "noul", "noul" => 0.2, "act" => true, "latency_ms" => 12}
         })
         |> Map.put("request_id", "abc")
@@ -162,7 +162,7 @@ defmodule JevTest do
     end
 
     test "a body that does not fit the wire format is a JSONCodec.Error", %{questions: questions} do
-      body = Jev.APIStub.triage_body(%{"security" => %{"type" => "noul", "noul" => "high"}})
+      body = Jev.Fixture.body(%{"security" => %{"type" => "noul", "noul" => "high"}})
 
       error = assert_raise JSONCodec.Error, fn -> Jev.reply(body, questions) end
       assert %JSONCodec.Error{path: [:noul], expected: :number, got: "high"} = error
@@ -172,12 +172,12 @@ defmodule JevTest do
       end
 
       assert_raise JSONCodec.Error, fn ->
-        Jev.reply(Jev.APIStub.triage_body(%{"kind" => %{"type" => "verdict"}}), questions)
+        Jev.reply(Jev.Fixture.body(%{"kind" => %{"type" => "verdict"}}), questions)
       end
     end
 
     test "an answer of the wrong kind for its question raises", %{questions: questions} do
-      body = Jev.APIStub.triage_body(%{"kind" => %{"type" => "noul", "noul" => 0.5}})
+      body = Jev.Fixture.body(%{"kind" => %{"type" => "noul", "noul" => 0.5}})
 
       assert_raise ArgumentError, ~r/answer for :kind is :noul.*Jev.Choice/, fn ->
         Jev.reply(body, questions)
@@ -185,13 +185,13 @@ defmodule JevTest do
     end
 
     test "takes an already decoded Jev.Wire.Response", %{questions: questions} do
-      wire = Jev.Wire.Response.from_map!(Jev.APIStub.triage_body())
-      assert Jev.reply(wire, questions) == Jev.reply(Jev.APIStub.triage_body(), questions)
+      wire = Jev.Wire.Response.from_map!(Jev.Fixture.body())
+      assert Jev.reply(wire, questions) == Jev.reply(Jev.Fixture.body(), questions)
     end
 
     test "never creates atoms from the response", %{questions: questions} do
       body =
-        Jev.APIStub.triage_body(%{"kind" => %{"type" => "choice", "choice" => "zzz_not_a_label"}})
+        Jev.Fixture.body(%{"kind" => %{"type" => "choice", "choice" => "zzz_not_a_label"}})
 
       assert_raise KeyError, fn -> Jev.reply(body, questions) end
     end

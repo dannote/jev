@@ -9,7 +9,7 @@ defmodule Jev.Triage do
 
   @impl true
   def handle_call({:labels, issue}, from, s) do
-    {:reply, {from, issue, Jev.APIStub.triage_questions()}, s}
+    {:reply, {from, issue, Jev.Fixture.questions()}, s}
   end
 
   # Clause order is the routing.

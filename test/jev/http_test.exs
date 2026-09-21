@@ -1,7 +1,7 @@
 defmodule Jev.HTTPTest do
   use ExUnit.Case, async: true
 
-  import Jev.APIStub
+  import Jev.Fixture, only: [questions: 0, reply: 0]
 
   setup do
     Req.Test.set_req_test_to_private()
@@ -10,29 +10,29 @@ defmodule Jev.HTTPTest do
 
   test "posts the wire format with the bearer key and returns the reply map" do
     Req.Test.stub(Jev.HTTP, fn conn ->
-      {body, conn} = body(conn)
+      {request, conn} = Jev.Test.request(conn)
       assert conn.request_path == "/v1/systemone"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer test-key"]
-      assert body["model"] == "jev-latest"
-      assert body["state"] == %{"title" => "crash on start"}
-      assert body["questions"]["security"]["type"] == "noul"
-      json(conn, 200, triage_body())
+      assert request["model"] == "jev-latest"
+      assert request["state"] == %{"title" => "crash on start"}
+      assert request["questions"]["security"]["type"] == "noul"
+      Jev.Test.respond(conn, reply())
     end)
 
     assert {:ok, %{kind: :bug, security: 0.03, usage: %{input_tokens: 812}}} =
-             Jev.HTTP.post(%{title: "crash on start"}, triage_questions())
+             Jev.HTTP.post(%{title: "crash on start"}, questions())
   end
 
   test "per-call options override configuration" do
     Req.Test.stub(Jev.HTTP, fn conn ->
-      {body, conn} = body(conn)
-      assert body["model"] == "jev-preview"
+      {request, conn} = Jev.Test.request(conn)
+      assert request["model"] == "jev-preview"
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer other-key"]
-      json(conn, 200, triage_body())
+      Jev.Test.respond(conn, reply())
     end)
 
     assert {:ok, _} =
-             Jev.HTTP.post("state", triage_questions(),
+             Jev.HTTP.post("state", questions(),
                model: "jev-preview",
                api_key: "other-key"
              )
@@ -42,7 +42,7 @@ defmodule Jev.HTTPTest do
     Req.Test.stub(Jev.HTTP, fn conn ->
       conn
       |> Plug.Conn.put_resp_header("x-typesafe-request-id", "req-1")
-      |> json(422, %{"error" => "criteria must have at least 2 options"})
+      |> Jev.Test.error(422, "criteria must have at least 2 options")
     end)
 
     assert {:error, %Jev.Error{status: 422, request_id: "req-1"} = error} =
@@ -57,7 +57,7 @@ defmodule Jev.HTTPTest do
     Req.Test.stub(Jev.HTTP, fn conn ->
       n = Agent.get_and_update(counter, &{&1, &1 + 1})
       status = if rem(n, 2) == 0, do: 429, else: 529
-      json(conn, status, %{"error" => "busy"})
+      Jev.Test.error(conn, status, "busy")
     end)
 
     assert {:error, %Jev.Error{status: 529}} =
@@ -71,16 +71,19 @@ defmodule Jev.HTTPTest do
 
     Req.Test.stub(Jev.HTTP, fn conn ->
       case Agent.get_and_update(counter, &{&1, &1 + 1}) do
-        0 -> json(conn, 529, %{"error" => "overloaded"})
-        _ -> json(conn, 200, triage_body())
+        0 -> Jev.Test.error(conn, 529, "overloaded")
+        _ -> Jev.Test.respond(conn, reply())
       end
     end)
 
-    assert {:ok, %{kind: :bug}} = Jev.HTTP.post("state", triage_questions())
+    assert {:ok, %{kind: :bug}} = Jev.HTTP.post("state", questions())
   end
 
   test "a 200 that does not fit the wire format is returned as a JSONCodec.Error" do
-    Req.Test.stub(Jev.HTTP, &json(&1, 200, %{"answers" => %{"security" => %{"noul" => "yes"}}}))
+    Req.Test.stub(
+      Jev.HTTP,
+      &Req.Test.json(&1, %{"answers" => %{"security" => %{"noul" => "yes"}}})
+    )
 
     assert {:error, %JSONCodec.Error{path: [:noul], got: "yes"}} =
              Jev.HTTP.post("state", security: "Vuln?")
@@ -96,31 +99,31 @@ defmodule Jev.HTTPTest do
   describe "endpoints" do
     test "a named endpoint sends its own model to its own host and no authorization" do
       Req.Test.stub(Jev.HTTP, fn conn ->
-        {body, conn} = body(conn)
+        {request, conn} = Jev.Test.request(conn)
         assert conn.host == "localhost"
         assert conn.port == 8000
         assert conn.request_path == "/v1/systemone"
         assert Plug.Conn.get_req_header(conn, "authorization") == []
-        assert body["model"] == "laya"
-        json(conn, 200, triage_body() |> Map.put("model", "laya-421m"))
+        assert request["model"] == "laya"
+        Jev.Test.respond(conn, Keyword.put(reply(), :model, "laya-421m"))
       end)
 
       assert {:ok, %{kind: :bug, model: "laya-421m", usage: %{cost: cost}}} =
-               Jev.HTTP.post("state", triage_questions(), endpoint: :local)
+               Jev.HTTP.post("state", questions(), endpoint: :local)
 
       assert cost == 0
     end
 
     test "per-call options override the named endpoint" do
       Req.Test.stub(Jev.HTTP, fn conn ->
-        {body, conn} = body(conn)
+        {request, conn} = Jev.Test.request(conn)
         assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer local-key"]
-        assert body["model"] == "laya-multilingual"
-        json(conn, 200, triage_body())
+        assert request["model"] == "laya-multilingual"
+        Jev.Test.respond(conn, reply())
       end)
 
       assert {:ok, _} =
-               Jev.HTTP.post("state", triage_questions(),
+               Jev.HTTP.post("state", questions(),
                  endpoint: :local,
                  api_key: "local-key",
                  model: "laya-multilingual"
@@ -128,7 +131,7 @@ defmodule Jev.HTTPTest do
     end
 
     test "errors name the endpoint" do
-      Req.Test.stub(Jev.HTTP, &json(&1, 500, %{"error" => "model not loaded"}))
+      Req.Test.stub(Jev.HTTP, &Jev.Test.error(&1, 500, "model not loaded"))
 
       assert {:error, %Jev.Error{status: 500, endpoint: :local} = error} =
                Jev.HTTP.post("state", [security: "Vuln?"], endpoint: :local, max_retries: 0)
@@ -199,12 +202,12 @@ defmodule Jev.HTTPTest do
       Req.Test.stub(Jev.HTTP, fn conn ->
         conn
         |> Plug.Conn.put_resp_header("x-typesafe-request-id", "req_ok")
-        |> json(200, triage_body())
+        |> Jev.Test.respond(reply())
       end)
 
       state = %{title: "x"}
 
-      {:ok, _} = Jev.HTTP.post(state, triage_questions(), tag: {:issue, 7})
+      {:ok, _} = Jev.HTTP.post(state, questions(), tag: {:issue, 7})
 
       assert_receive {^ref, [:jev, :request, :start], %{system_time: _}, start}
       assert start.tag == {:issue, 7}
@@ -234,16 +237,16 @@ defmodule Jev.HTTPTest do
     test "emits answer events only for the questions the server answered", %{ref: ref} do
       Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, security: 0.4))
 
-      {:ok, %{security: 0.4}} = Jev.HTTP.post("state", triage_questions())
+      {:ok, %{security: 0.4}} = Jev.HTTP.post("state", questions())
 
       assert_receive {^ref, [:jev, :answer], _, %{name: :security}}
       refute_receive {^ref, [:jev, :answer], _, %{name: :kind}}
     end
 
     test "metadata carries the endpoint name", %{ref: ref} do
-      Req.Test.stub(Jev.HTTP, &json(&1, 200, triage_body()))
+      Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, reply()))
 
-      {:ok, _} = Jev.HTTP.post("state", triage_questions(), endpoint: :local)
+      {:ok, _} = Jev.HTTP.post("state", questions(), endpoint: :local)
 
       assert_receive {^ref, [:jev, :request, :stop], %{cost: cost}, %{endpoint: :local}}
       assert cost == 0
@@ -254,7 +257,7 @@ defmodule Jev.HTTPTest do
       Req.Test.stub(Jev.HTTP, fn conn ->
         conn
         |> Plug.Conn.put_resp_header("x-typesafe-request-id", "req-9")
-        |> json(401, %{"error" => "no"})
+        |> Jev.Test.error(401, "no")
       end)
 
       {:error, _} = Jev.HTTP.post("state", security: "Vuln?")

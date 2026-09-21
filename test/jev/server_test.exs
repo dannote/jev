@@ -1,20 +1,7 @@
 defmodule Jev.ServerTest do
   use ExUnit.Case, async: false
 
-  import Jev.APIStub
-
   setup {Req.Test, :set_req_test_to_shared}
-
-  defp choice(label, confidence) do
-    %{
-      "kind" => %{
-        "type" => "choice",
-        "choice" => label,
-        "confidence" => confidence,
-        "probabilities" => %{}
-      }
-    }
-  end
 
   describe "Jev.Triage" do
     setup do
@@ -24,17 +11,14 @@ defmodule Jev.ServerTest do
 
     test "routes answers through handle_answer clauses", %{pid: pid} do
       Req.Test.stub(Jev.HTTP, fn conn ->
-        {body, conn} = body(conn)
+        {request, conn} = Jev.Test.request(conn)
 
-        overrides =
-          case body["state"]["title"] do
-            "leak" -> %{"security" => %{"type" => "noul", "noul" => 0.9}}
-            "typo" -> choice("other", 0.7)
-            "meh" -> choice("feature", 0.3)
-            _ -> %{}
-          end
-
-        json(conn, 200, triage_body(overrides))
+        case request["state"]["title"] do
+          "leak" -> Jev.Test.respond(conn, security: 0.9)
+          "typo" -> Jev.Test.respond(conn, kind: :other, confidence: %{kind: 0.7})
+          "meh" -> Jev.Test.respond(conn, kind: :feature, confidence: %{kind: 0.3})
+          _ -> Jev.Test.respond(conn, Jev.Fixture.reply())
+        end
       end)
 
       assert GenServer.call(pid, {:labels, %{title: "crash"}}) == [:bug, :"priority:high"]
@@ -45,9 +29,10 @@ defmodule Jev.ServerTest do
 
     test "keeps many requests in flight and matches each answer to its caller", %{pid: pid} do
       Req.Test.stub(Jev.HTTP, fn conn ->
-        {body, conn} = body(conn)
+        {request, conn} = Jev.Test.request(conn)
         Process.sleep(Enum.random(1..20))
-        json(conn, 200, triage_body(choice(body["state"]["kind"], 0.99)))
+        kind = String.to_existing_atom(request["state"]["kind"])
+        Jev.Test.respond(conn, kind: kind, severity: 2.4, confidence: %{kind: 0.99})
       end)
 
       tasks =
@@ -65,7 +50,7 @@ defmodule Jev.ServerTest do
     end
 
     test "API errors arrive at handle_answer as {:error, %Jev.Error{}}", %{pid: pid} do
-      Req.Test.stub(Jev.HTTP, &json(&1, 422, %{"error" => "bad"}))
+      Req.Test.stub(Jev.HTTP, &Jev.Test.error(&1, 422, "bad"))
 
       assert {:error, %Jev.Error{status: 422}} = GenServer.call(pid, {:labels, %{title: "x"}})
     end
@@ -131,18 +116,12 @@ defmodule Jev.ServerTest do
 
   test "handle_answer can reply again, with per-request options" do
     Req.Test.stub(Jev.HTTP, fn conn ->
-      {body, conn} = body(conn)
+      {request, conn} = Jev.Test.request(conn)
 
-      answer =
-        case body["model"] do
-          "jev-latest" -> %{"choice" => "c", "confidence" => 0.2}
-          "jev-preview" -> %{"choice" => "a", "confidence" => 0.95}
-        end
-
-      json(conn, 200, %{
-        "answers" => %{"kind" => Map.put(answer, "type", "choice")},
-        "usage" => %{}
-      })
+      case request["model"] do
+        "jev-latest" -> Jev.Test.respond(conn, kind: :c, confidence: %{kind: 0.2})
+        "jev-preview" -> Jev.Test.respond(conn, kind: :a, confidence: %{kind: 0.95})
+      end
     end)
 
     pid = start_supervised!({Cascade, self()})

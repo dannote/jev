@@ -1,13 +1,13 @@
 defmodule Jev.TestTest do
   use ExUnit.Case, async: true
 
-  import Jev.APIStub, only: [triage_questions: 0]
+  import Jev.Fixture, only: [questions: 0]
 
   doctest Jev.Test
 
   setup do
     Req.Test.set_req_test_to_private()
-    %{questions: Jev.questions(triage_questions())}
+    %{questions: Jev.questions(questions())}
   end
 
   describe "body/2" do
@@ -25,7 +25,7 @@ defmodule Jev.TestTest do
         usage: %{input_tokens: 40, output_tokens: 0}
       }
 
-      reply = given |> Jev.Test.body(triage_questions()) |> Jev.reply(questions)
+      reply = given |> Jev.Test.body(questions()) |> Jev.reply(questions)
 
       assert Map.drop(reply, [:usage]) == Map.drop(given, [:usage])
       assert %{input_tokens: 40, output_tokens: 0} = reply.usage
@@ -34,7 +34,7 @@ defmodule Jev.TestTest do
     test "fills in the distribution implied by the confidence", %{questions: questions} do
       reply =
         [kind: :bug, confidence: %{kind: 0.5}]
-        |> Jev.Test.body(triage_questions())
+        |> Jev.Test.body(questions())
         |> Jev.reply(questions)
 
       assert reply.kind == :bug
@@ -45,7 +45,7 @@ defmodule Jev.TestTest do
     end
 
     test "defaults to certainty, a test model, zero usage, and a legend for scores" do
-      body = Jev.Test.body([severity: 2.4], triage_questions())
+      body = Jev.Test.body([severity: 2.4], questions())
 
       assert body["model"] == "jev-test"
       assert body["usage"] == %{"input_tokens" => 0, "output_tokens" => 0}
@@ -65,27 +65,27 @@ defmodule Jev.TestTest do
     end
 
     test "emits what the API emits, with no null fields" do
-      body = Jev.Test.body([security: 0.2], triage_questions())
+      body = Jev.Test.body([security: 0.2], questions())
       assert body["answers"]["security"] == %{"type" => "noul", "noul" => 0.2}
     end
 
     test "accepts the wire questions of a request" do
-      wire = %{"questions" => JSON.decode!(JSON.encode!(Jev.questions(triage_questions())))}
+      wire = %{"questions" => JSON.decode!(JSON.encode!(Jev.questions(questions())))}
       body = Jev.Test.body([kind: :other], wire)
       assert body["answers"]["kind"]["choice"] == "other"
     end
 
     test "rejects unknown questions, labels, and mismatched values" do
       assert_raise ArgumentError, ~r/no question named :mood/, fn ->
-        Jev.Test.body([mood: :good], triage_questions())
+        Jev.Test.body([mood: :good], questions())
       end
 
       assert_raise ArgumentError, ~r/"wontfix" is not one of/, fn ->
-        Jev.Test.body([kind: :wontfix], triage_questions())
+        Jev.Test.body([kind: :wontfix], questions())
       end
 
       assert_raise ArgumentError, ~r/is not an answer to a :noul question/, fn ->
-        Jev.Test.body([security: :yes], triage_questions())
+        Jev.Test.body([security: :yes], questions())
       end
     end
   end
@@ -99,7 +99,7 @@ defmodule Jev.TestTest do
       end)
 
       assert {:ok, %{kind: :bug, security: 0.01, confidence: %{kind: 0.95}}} =
-               Jev.HTTP.post("a crash", triage_questions())
+               Jev.HTTP.post("a crash", questions())
     end
 
     test "sends an error the client turns into Jev.Error" do

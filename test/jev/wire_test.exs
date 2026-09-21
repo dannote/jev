@@ -5,7 +5,7 @@ defmodule Jev.WireTest do
 
   test "decodes the documented response" do
     assert {:ok, %Wire.Response{model: "jev-1.13.0", answers: answers, usage: usage}} =
-             Wire.Response.from_map(Jev.APIStub.triage_body())
+             Wire.Response.from_map(Jev.Fixture.body())
 
     assert %Wire.Answer{type: :choice, choice: "bug", probabilities: %{"bug" => 0.93}} =
              answers["kind"]
@@ -16,7 +16,7 @@ defmodule Jev.WireTest do
   end
 
   test "usage defaults to zero when omitted or empty" do
-    body = Map.delete(Jev.APIStub.triage_body(), "usage")
+    body = Map.delete(Jev.Fixture.body(), "usage")
     assert %Wire.Response{usage: %Wire.Usage{input_tokens: 0}} = Wire.Response.from_map!(body)
 
     body = Map.put(body, "usage", %{})
