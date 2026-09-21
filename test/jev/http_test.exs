@@ -86,6 +86,78 @@ defmodule Jev.HTTPTest do
              Jev.HTTP.post("state", [security: "Vuln?"], max_retries: 0)
   end
 
+  describe "endpoints" do
+    test "a named endpoint sends its own model to its own host and no authorization" do
+      Req.Test.stub(Jev.HTTP, fn conn ->
+        {body, conn} = body(conn)
+        assert conn.host == "localhost"
+        assert conn.port == 8000
+        assert conn.request_path == "/v1/systemone"
+        assert Plug.Conn.get_req_header(conn, "authorization") == []
+        assert body["model"] == "laya"
+        json(conn, 200, triage_body() |> Map.put("model", "laya-421m"))
+      end)
+
+      assert {:ok, %{kind: :bug, model: "laya-421m", usage: %{cost: cost}}} =
+               Jev.HTTP.post("state", triage_questions(), endpoint: :local)
+
+      assert cost == 0
+    end
+
+    test "per-call options override the named endpoint" do
+      Req.Test.stub(Jev.HTTP, fn conn ->
+        {body, conn} = body(conn)
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer local-key"]
+        assert body["model"] == "laya-multilingual"
+        json(conn, 200, triage_body())
+      end)
+
+      assert {:ok, _} =
+               Jev.HTTP.post("state", triage_questions(),
+                 endpoint: :local,
+                 api_key: "local-key",
+                 model: "laya-multilingual"
+               )
+    end
+
+    test "errors name the endpoint" do
+      Req.Test.stub(Jev.HTTP, &json(&1, 500, %{"error" => "model not loaded"}))
+
+      assert {:error, %Jev.Error{status: 500, endpoint: :local} = error} =
+               Jev.HTTP.post("state", [security: "Vuln?"], endpoint: :local, max_retries: 0)
+
+      assert Exception.message(error) == "endpoint :local responded 500: model not loaded"
+    end
+
+    test "endpoint/1 resolves the typesafe endpoint from the top-level configuration" do
+      assert %{
+               name: :typesafe,
+               base_url: "https://api.typesafe.ai",
+               api_key: "test-key",
+               model: "jev-latest",
+               usd_per_million_input: 0.042,
+               req_options: [{:plug, _} | _]
+             } = Jev.HTTP.endpoint()
+    end
+
+    test "endpoint/1 gives a named endpoint no key and no price but the transport settings" do
+      assert %{name: :local, api_key: nil, max_retries: 3, req_options: [{:plug, _} | _]} =
+               endpoint = Jev.HTTP.endpoint(endpoint: :local)
+
+      assert endpoint.usd_per_million_input == 0
+    end
+
+    test "an unknown endpoint or one without a base_url raises" do
+      assert_raise ArgumentError, ~r/unknown endpoint :nope/, fn ->
+        Jev.HTTP.post("state", [security: "Vuln?"], endpoint: :nope)
+      end
+
+      assert_raise ArgumentError, ~r/:unconfigured needs a :base_url/, fn ->
+        Jev.HTTP.endpoint(endpoint: :unconfigured)
+      end
+    end
+  end
+
   test "a missing api key raises" do
     Application.put_env(:jev, :api_key, nil)
     on_exit(fn -> Application.put_env(:jev, :api_key, "test-key") end)
@@ -129,6 +201,8 @@ defmodule Jev.HTTPTest do
 
       assert_receive {^ref, [:jev, :request, :start], %{system_time: _}, start}
       assert start.tag == {:issue, 7}
+      assert start.endpoint == :typesafe
+      assert start.model == "jev-latest"
       assert start.state_hash == :erlang.phash2(state)
       assert start.questions == %{kind: :choice, severity: :score, security: :noul}
       refute Map.has_key?(start, :state)
@@ -148,6 +222,16 @@ defmodule Jev.HTTPTest do
 
       assert_receive {^ref, [:jev, :answer], %{probability: 0.03},
                       %{name: :security, type: :noul, answer: 0.03}}
+    end
+
+    test "metadata carries the endpoint name", %{ref: ref} do
+      Req.Test.stub(Jev.HTTP, &json(&1, 200, triage_body()))
+
+      {:ok, _} = Jev.HTTP.post("state", triage_questions(), endpoint: :local)
+
+      assert_receive {^ref, [:jev, :request, :stop], %{cost: cost}, %{endpoint: :local}}
+      assert cost == 0
+      assert_receive {^ref, [:jev, :answer], _, %{endpoint: :local, name: :kind}}
     end
 
     test "stop metadata carries the status and request id on failure", %{ref: ref} do
