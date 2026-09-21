@@ -260,10 +260,10 @@ defmodule Jev.HTTPTest do
         |> Jev.Test.error(401, "no")
       end)
 
-      {:error, _} = Jev.HTTP.post("state", security: "Vuln?")
+      {:error, _} = Jev.HTTP.post("state", [security: "Vuln?"], tag: ref)
 
       assert_receive {^ref, [:jev, :request, :stop], _, %{status: 401, request_id: "req-9"}}
-      refute_receive {^ref, [:jev, :answer], _, _}
+      refute_receive {^ref, [:jev, :answer], _, %{tag: ^ref}}
     end
 
     test "exceptions inside the call emit the exception event", %{ref: ref} do

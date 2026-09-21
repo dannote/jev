@@ -93,6 +93,7 @@ end
 {:reply, {tag, state, questions}, s}
 {:reply, {tag, state, [questions], [model: "jev-preview"]}, s}
 {:reply, {tag, state, [questions], [endpoint: :laya]}, s}
+{:reply, {tag, state, [questions], [backend: MyModel]}, s}
 ```
 
 From any callback. The answer arrives at `handle_answer(reply, tag, s)`.
@@ -224,4 +225,17 @@ Jev.confidence(%{a: 0.75, b: 0.25})       #=> 0.5
 
 ### Metadata
 
-`endpoint`, `model`, `questions`, `state_hash`, `tag`, `status`, `request_id`, `confidence`; per answer `name`, `type`, `answer`.
+`backend`, `endpoint`, `model`, `questions`, `state_hash`, `tag`, `status`, `request_id`, `confidence`; per answer `name`, `type`, `answer`.
+
+### Own backend
+
+```elixir
+@behaviour Jev.Backend
+def post(state, questions, opts) do
+  Jev.Telemetry.span(state, questions, %{backend: __MODULE__, tag: opts[:tag]}, fn ->
+    {:ok, reply}
+  end)
+end
+```
+
+`config :jev, backend: MyModel` makes it the default.

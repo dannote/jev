@@ -52,6 +52,14 @@ unless they match on `model`. They may want to: the
 [Recursive Workflows](recursive-workflows.md) guide escalates from a local
 model to Jev when confidence is low.
 
+`backend:` goes one step further and replaces `Jev.HTTP` with any module
+implementing `Jev.Backend`, for an in-process model or a fake in tests.
+`config :jev, backend:` sets the default:
+
+```elixir
+{:reply, {tag, state, [kind: {"Which?", %{a: nil, b: nil}}], [backend: MyModel]}, s}
+```
+
 The other return values are the GenServer ones: `{:noreply, s}`,
 `{:noreply, s, timeout | :hibernate | {:continue, term}}`, and
 `{:stop, reason, s}`.

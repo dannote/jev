@@ -95,6 +95,7 @@ defmodule Jev.MixProject do
       groups_for_modules: [
         Questions: [Jev, Jev.Noul, Jev.Choice, Jev.Score],
         Server: [Jev.Server],
+        Backends: [Jev.Backend, Jev.Telemetry],
         Transport: [Jev.HTTP, Jev.Error],
         Testing: [Jev.Test],
         Wire: [Jev.Wire, Jev.Wire.Response, Jev.Wire.Answer, Jev.Wire.Usage]

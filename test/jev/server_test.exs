@@ -132,6 +132,51 @@ defmodule Jev.ServerTest do
     assert :sys.get_state(pid).inner.asked == [:narrow, :broad]
   end
 
+  describe "backends" do
+    defmodule Picky do
+      @moduledoc false
+      use Jev.Server
+
+      @impl true
+      def init(_), do: {:ok, %{}}
+
+      @impl true
+      def handle_call({:ask, opts}, from, s) do
+        {:reply, {from, "state", [kind: {"Kind?", %{a: nil, b: nil}}], opts}, s}
+      end
+
+      @impl true
+      def handle_answer(reply, from, s) do
+        GenServer.reply(from, reply)
+        {:noreply, s}
+      end
+    end
+
+    test "a request picks its backend" do
+      pid = start_supervised!({Picky, []})
+
+      assert %{kind: :b} =
+               GenServer.call(pid, {:ask, [backend: Jev.Canned, answers: [kind: :b]]})
+
+      assert {:error, :no_answers} = GenServer.call(pid, {:ask, [backend: Jev.Canned]})
+    end
+
+    test "the configured backend is the default" do
+      Application.put_env(:jev, :backend, Jev.Canned)
+      on_exit(fn -> Application.delete_env(:jev, :backend) end)
+      pid = start_supervised!({Picky, []})
+
+      assert %{kind: :a} = GenServer.call(pid, {:ask, [answers: [kind: :a]]})
+    end
+
+    test "Jev.HTTP is the default backend" do
+      Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, kind: :a))
+      pid = start_supervised!({Picky, []})
+
+      assert %{kind: :a, model: "jev-test"} = GenServer.call(pid, {:ask, []})
+    end
+  end
+
   test "ordinary messages reach handle_info" do
     pid = start_supervised!({Cascade, self()})
     send(pid, :ping)

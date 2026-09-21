@@ -1,17 +1,20 @@
 # Telemetry
 
-`Jev.HTTP.post/3` emits four events. `Jev.Server` adds nothing; it passes the
-tag through so a handler can attribute a call to the request that caused it.
+`Jev.Telemetry.span/4` emits four events around every request. `Jev.HTTP`
+runs under it, and so should any `Jev.Backend` of your own. `Jev.Server` adds
+nothing; it passes the tag through so a handler can attribute a call to the
+request that caused it.
 
 | Event | Measurements | Metadata |
 | --- | --- | --- |
-| `[:jev, :request, :start]` | `system_time` | `endpoint`, `model`, `questions`, `state_hash`, `tag` |
+| `[:jev, :request, :start]` | `system_time` | `backend`, `endpoint`, `model`, `questions`, `state_hash`, `tag` |
 | `[:jev, :request, :stop]` | `duration`, `input_tokens`, `output_tokens`, `cost` | plus `status`, `request_id`, `confidence` |
 | `[:jev, :request, :exception]` | `duration` | plus `kind`, `reason`, `stacktrace` |
-| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, `endpoint`, `model`, `state_hash`, `tag` |
+| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, plus the start metadata |
 
-`questions` is a map of question name to type. `confidence` on the stop event
-is the reply's confidence map. `[:jev, :answer]` fires once per question after
+`questions` is a map of question name to type. `endpoint`, `model`, `status`,
+and `request_id` come from `Jev.HTTP`; another backend puts what it knows in
+their place. `confidence` on the stop event is the reply's confidence map. `[:jev, :answer]` fires once per question after
 a successful call; for a yes/no question `probability` is the answer itself,
 for a choice or score it is the probability of the winning option and
 `confidence` is Jev's confidence value.

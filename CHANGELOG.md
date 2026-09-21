@@ -22,6 +22,10 @@ as TypeSafe. This release lets one application talk to several of them.
 - `Jev.Test`: `respond/2` answers a `Req.Test` stub from a reply-shaped map, reading the questions
   from the request; `error/3` sends a failure; `body/2` is the pure half; `request/1` reads the
   request. `:plug` becomes an optional dependency for these.
+- `Jev.Backend`: a behaviour with one callback, `post/3`. `Jev.HTTP` implements it and stays the
+  default; `backend:` per request or `config :jev, backend:` picks another, for an in-process
+  model or a fake. `Jev.Telemetry.span/4` is the shared telemetry every backend wraps its work in,
+  so events carry `backend` and are identical whatever answered.
 - `Jev.confidence/2` is public: TypeSafe's confidence for a distribution.
 - `[:jev, :answer]` fires only for questions the server answered. A partial reply used to crash the
   request.

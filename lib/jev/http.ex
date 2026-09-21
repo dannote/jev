@@ -2,8 +2,9 @@ defmodule Jev.HTTP do
   @moduledoc """
   The transport: one POST to `/v1/systemone` per call.
 
-  This is the seam between the pure modules and the network. `Jev.Server` calls
-  it from a task; scripts and evaluation harnesses call it directly.
+  This is the `Jev.Backend` for TypeSafe and every server that speaks its wire
+  format, and the default. `Jev.Server` calls it from a task; scripts and
+  evaluation harnesses call it directly.
 
   ## Configuration
 
@@ -44,18 +45,13 @@ defmodule Jev.HTTP do
 
   ## Telemetry
 
-  `[:jev, :request, :start | :stop | :exception]` wrap each call with
-  `:telemetry.span/3`. Stop measurements carry `input_tokens`, `output_tokens`,
-  and `cost`; metadata carries `endpoint`, `model`, `questions` (name to type),
-  `state_hash`, `tag`, `status`, `request_id`, and `confidence`.
-
-  `[:jev, :answer]` fires once per question after a successful call with
-  `confidence` and `probability` measurements and `name`, `type`, `answer`,
-  `endpoint`, `model`, `state_hash`, and `tag` metadata. A histogram of
-  `confidence` by `name` is a calibration monitor.
-
-  The state itself is never put in metadata, only its hash.
+  Every call runs under `Jev.Telemetry.span/4`, with `backend: Jev.HTTP`,
+  the `endpoint` name, and the `model` in the metadata; the stop event adds
+  `status` and `request_id`. The state itself is never put in metadata, only
+  its hash.
   """
+
+  @behaviour Jev.Backend
 
   @default_base_url "https://api.typesafe.ai"
   @default_model "jev-latest"
@@ -94,30 +90,22 @@ defmodule Jev.HTTP do
   """
   @spec post(Jev.entry(), keyword(Jev.shorthand()) | %{atom() => Jev.shorthand()}, [option()]) ::
           {:ok, Jev.reply()} | {:error, Jev.Error.t() | JSONCodec.Error.t() | Exception.t()}
+  @impl Jev.Backend
   def post(state, questions, opts \\ []) do
     questions = Jev.questions(questions)
     endpoint = endpoint(opts)
 
     metadata = %{
+      backend: __MODULE__,
       endpoint: endpoint.name,
       model: endpoint.model,
-      questions: Map.new(questions, fn {name, %{type: type}} -> {name, type} end),
-      state_hash: :erlang.phash2(state),
       tag: opts[:tag]
     }
 
-    :telemetry.span([:jev, :request], metadata, fn ->
+    Jev.Telemetry.span(state, questions, metadata, fn ->
       case request(state, questions, endpoint) do
-        {:ok, reply, request_id} ->
-          emit_answers(reply, metadata)
-          stop = %{status: 200, request_id: request_id, confidence: reply.confidence}
-          {{:ok, reply}, reply.usage, Map.merge(metadata, stop)}
-
-        {:error, %Jev.Error{status: status, request_id: id}} = error ->
-          {error, %{}, Map.merge(metadata, %{status: status, request_id: id})}
-
-        {:error, exception} = error ->
-          {error, %{}, Map.put(metadata, :error, exception)}
+        {:ok, reply, request_id} -> {:ok, reply, %{status: 200, request_id: request_id}}
+        {:error, _} = error -> error
       end
     end)
   end
@@ -251,22 +239,4 @@ defmodule Jev.HTTP do
   end
 
   # One event per answered question; a server may leave a question out.
-  defp emit_answers(reply, %{questions: questions} = metadata) do
-    metadata = Map.delete(metadata, :questions)
-
-    for {name, type} <- questions, is_map_key(reply, name) do
-      measurements = answer_measurements(type, name, reply)
-      metadata = Map.merge(metadata, %{name: name, type: type, answer: reply[name]})
-      :telemetry.execute([:jev, :answer], measurements, metadata)
-    end
-
-    :ok
-  end
-
-  defp answer_measurements(:noul, name, reply), do: %{probability: reply[name]}
-
-  defp answer_measurements(_type, name, reply) do
-    top = reply.probabilities[name] |> Map.values() |> Enum.max(&>=/2, fn -> nil end)
-    %{confidence: reply.confidence[name], probability: top}
-  end
 end

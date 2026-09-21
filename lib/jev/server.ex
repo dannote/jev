@@ -49,7 +49,9 @@ defmodule Jev.Server do
       {:reply, {tag, state, [kind: {"Which?", %{a: nil, b: nil}}], [model: "jev-preview"]}, s}
 
   `endpoint:` picks a named server from `config :jev, endpoints:`, for a
-  self-hosted model that speaks the same wire format. See `Jev.HTTP`.
+  self-hosted model that speaks the same wire format; see `Jev.HTTP`.
+  `backend:` picks a `Jev.Backend` module instead of `Jev.HTTP` altogether,
+  for an in-process model or a fake; `config :jev, backend:` sets the default.
 
   Built the way `GenStage` and `Agent` are built: this module owns the real
   GenServer callbacks and delegates to yours, so `:sys.get_state/1`, Observer,
@@ -64,8 +66,9 @@ defmodule Jev.Server do
   @typedoc "What every callback returns."
   @type reply ::
           {:reply, {tag :: term(), Jev.entry(), keyword() | map()}, state :: term()}
-          | {:reply, {tag :: term(), Jev.entry(), keyword() | map(), [Jev.HTTP.option()]},
-             state :: term()}
+          | {:reply,
+             {tag :: term(), Jev.entry(), keyword() | map(),
+              [Jev.HTTP.option() | {:backend, module()}]}, state :: term()}
           | {:noreply, state :: term()}
           | {:noreply, state :: term(), timeout() | :hibernate | {:continue, term()}}
           | {:stop, reason :: term(), state :: term()}
@@ -251,10 +254,11 @@ defmodule Jev.Server do
 
   defp route({:reply, {tag, state, questions, opts}, inner}, st) do
     questions = Jev.questions(questions)
+    {backend, opts} = Keyword.pop_lazy(opts, :backend, &default_backend/0)
     opts = Keyword.put(opts, :tag, tag)
 
     task =
-      Task.Supervisor.async_nolink(Jev.TaskSupervisor, Jev.HTTP, :post, [state, questions, opts])
+      Task.Supervisor.async_nolink(Jev.TaskSupervisor, backend, :post, [state, questions, opts])
 
     {:noreply, %{st | inner: inner, pending: Map.put(st.pending, task.ref, tag)}}
   end
@@ -262,4 +266,6 @@ defmodule Jev.Server do
   defp route({:noreply, inner}, st), do: {:noreply, %{st | inner: inner}}
   defp route({:noreply, inner, extra}, st), do: {:noreply, %{st | inner: inner}, extra}
   defp route({:stop, reason, inner}, st), do: {:stop, reason, %{st | inner: inner}}
+
+  defp default_backend, do: Application.get_env(:jev, :backend, Jev.HTTP)
 end

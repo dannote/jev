@@ -176,10 +176,10 @@ structs; `Jev.Wire.Response.schema/0` is its JSON Schema.
 
 | Event | Measurements | Metadata |
 | --- | --- | --- |
-| `[:jev, :request, :start]` | `system_time` | `endpoint`, `model`, `questions`, `state_hash`, `tag` |
+| `[:jev, :request, :start]` | `system_time` | `backend`, `endpoint`, `model`, `questions`, `state_hash`, `tag` |
 | `[:jev, :request, :stop]` | `duration`, `input_tokens`, `output_tokens`, `cost` | plus `status`, `request_id`, `confidence` |
 | `[:jev, :request, :exception]` | `duration` | plus `kind`, `reason`, `stacktrace` |
-| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, `endpoint`, `model`, `state_hash`, `tag` |
+| `[:jev, :answer]` | `confidence`, `probability` | `name`, `type`, `answer`, plus the start metadata |
 
 The state is never in metadata, only its hash. A distribution on
 `jev.answer.confidence` tagged by `name` is a calibration monitor:
@@ -250,6 +250,12 @@ Replies from any endpoint have the same shape. When a server omits
 it. Models are calibrated differently, so a threshold tuned on one is a
 starting point on another; the `[:jev, :answer]` telemetry event carries the
 `endpoint`, so one histogram per endpoint shows the difference.
+
+An endpoint is still HTTP. `backend:` swaps the transport itself for any
+module implementing `Jev.Backend`, one callback, for an in-process model or a
+fake; `config :jev, backend:` sets the default. `Jev.HTTP` is the backend that
+speaks the wire format. Both share `Jev.Telemetry`, so the events below are the
+same whatever answered.
 
 The natural use is a cascade. Ask the local model first and escalate to Jev
 when it is unsure:
