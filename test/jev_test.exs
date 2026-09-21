@@ -165,7 +165,8 @@ defmodule JevTest do
       body = Jev.Fixture.body(%{"security" => %{"type" => "noul", "noul" => "high"}})
 
       error = assert_raise JSONCodec.Error, fn -> Jev.reply(body, questions) end
-      assert %JSONCodec.Error{path: [:noul], expected: :number, got: "high"} = error
+      assert %JSONCodec.Error{path: [:answers, "security", :noul], got: "high"} = error
+      assert Exception.message(error) =~ "answers.security.noul"
 
       assert_raise JSONCodec.Error, ~r/missing_required_field/, fn ->
         Jev.reply(%{"model" => "x"}, questions)

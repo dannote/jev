@@ -47,7 +47,7 @@ defmodule Jev.MixProject do
   defp deps do
     [
       {:req, "~> 0.7.4"},
-      {:json_codec, "~> 0.2.5"},
+      {:json_codec, "~> 0.2.6"},
       {:telemetry, "~> 1.4"},
       {:plug, "~> 1.14", optional: true},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},

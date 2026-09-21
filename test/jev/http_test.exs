@@ -85,7 +85,7 @@ defmodule Jev.HTTPTest do
       &Req.Test.json(&1, %{"answers" => %{"security" => %{"noul" => "yes"}}})
     )
 
-    assert {:error, %JSONCodec.Error{path: [:noul], got: "yes"}} =
+    assert {:error, %JSONCodec.Error{path: [:answers, "security", :noul], got: "yes"}} =
              Jev.HTTP.post("state", security: "Vuln?")
   end
 
