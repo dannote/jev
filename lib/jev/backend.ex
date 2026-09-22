@@ -4,7 +4,8 @@ defmodule Jev.Backend do
 
   `Jev.HTTP` is the backend that speaks to TypeSafe and compatible servers.
   An in-process model, a cache, or a fake for tests is another module with
-  the same shape:
+  the same shape. [jev_nx](https://hexdocs.pm/jev_nx) is one: it runs open
+  decision models such as Laya on `Nx`, in your own application.
 
       defmodule Canned do
         @behaviour Jev.Backend

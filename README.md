@@ -254,8 +254,9 @@ starting point on another; the `[:jev, :answer]` telemetry event carries the
 An endpoint is still HTTP. `backend:` swaps the transport itself for any
 module implementing `Jev.Backend`, one callback, for an in-process model or a
 fake; `config :jev, backend:` sets the default. `Jev.HTTP` is the backend that
-speaks the wire format. Both share `Jev.Telemetry`, so the events below are the
-same whatever answered.
+speaks the wire format, and [jev_nx](https://hexdocs.pm/jev_nx) is one that
+runs open models such as Laya on Nx without leaving your application. Both
+share `Jev.Telemetry`, so the events below are the same whatever answered.
 
 The natural use is a cascade. Ask the local model first and escalate to Jev
 when it is unsure:
