@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.1 (2026-09-22)
+
+- `examples/local.exs` is a live smoke test against any `/v1/systemone` server, and
+  `test/fixtures/conformance` keeps the bodies real servers return, decoded by
+  `Jev.ConformanceTest`. The first is jeff serving GLiFormer.
+- `Jev.Backend` and the README name [jev_nx](https://hexdocs.pm/jev_nx), which runs open
+  decision models in-process on Nx.
+
 ## 0.2.0 (2026-09-21)
 
 The `/v1/systemone` wire format is now served by open decision models as well
