@@ -1,0 +1,38 @@
+{
+    "model": "gliformer-large-v1",
+    "answers": {
+        "kind": {
+            "type": "choice",
+            "choice": "bug",
+            "confidence": 0.166,
+            "probabilities": {
+                "bug": 0.444,
+                "billing": 0.4426,
+                "other": 0.1134
+            }
+        },
+        "severity": {
+            "type": "score",
+            "score": 1.2228,
+            "confidence": 0.2313,
+            "legend": {
+                "0": "Cosmetic",
+                "1": "Workaround exists",
+                "2": "Blocking"
+            },
+            "probabilities": {
+                "0": 0.1656,
+                "1": 0.4875,
+                "2": 0.3468
+            }
+        },
+        "refund": {
+            "type": "noul",
+            "noul": 0.8558
+        }
+    },
+    "usage": {
+        "input_tokens": 117,
+        "output_tokens": 18
+    }
+}

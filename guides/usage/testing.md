@@ -96,8 +96,21 @@ based on the first answer.
 
 ## Live
 
-The repository's `examples/triage.exs` is a live smoke test against the API:
+Two scripts talk to a real server. `examples/triage.exs` asks Jev:
 
 ```sh
 TYPESAFE_API_KEY=... mix run examples/triage.exs
 ```
+
+`examples/local.exs` asks anything that speaks the wire format, and checks
+what a stub cannot: that a server we did not write is understood, that a
+named endpoint sends its key and bills nothing, and that a rejected key
+becomes a `Jev.Error`.
+
+```sh
+JEV_LOCAL_URL=http://localhost:8000 JEV_LOCAL_KEY=devkey mix run examples/local.exs
+```
+
+The bodies those servers return are worth keeping. `test/fixtures/conformance`
+holds one per implementation, and `Jev.ConformanceTest` decodes each one, which
+is how a server drifting away from the client gets noticed.
