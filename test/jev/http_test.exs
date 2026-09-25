@@ -205,12 +205,9 @@ defmodule Jev.HTTPTest do
   end
 
   test "a missing api key raises" do
-    Application.put_env(:jev, :api_key, nil)
-    on_exit(fn -> Application.put_env(:jev, :api_key, "test-key") end)
-    System.delete_env("TYPESAFE_API_KEY")
-
+    # Per-call override, so the shared config stays intact for the tests running alongside.
     assert_raise ArgumentError, ~r/TYPESAFE_API_KEY/, fn ->
-      Jev.HTTP.post("state", security: "Vuln?")
+      Jev.HTTP.post("state", [security: "Vuln?"], api_key: nil)
     end
   end
 
@@ -245,15 +242,19 @@ defmodule Jev.HTTPTest do
 
       {:ok, _} = Jev.HTTP.post(state, questions(), tag: {:issue, 7})
 
-      assert_receive {^ref, [:jev, :request, :start], %{system_time: _}, start}
-      assert start.tag == {:issue, 7}
+      # The handler is global and other modules run concurrently: match this request by its tag.
+      assert_receive {^ref, [:jev, :request, :start], %{system_time: _},
+                      %{tag: {:issue, 7}} = start}
+
       assert start.endpoint == :typesafe
       assert start.model == "jev-latest"
       assert start.state_hash == :erlang.phash2(state)
       assert start.questions == %{kind: :choice, severity: :score, security: :noul}
       refute Map.has_key?(start, :state)
 
-      assert_receive {^ref, [:jev, :request, :stop], stop_measurements, stop}
+      assert_receive {^ref, [:jev, :request, :stop], stop_measurements,
+                      %{tag: {:issue, 7}} = stop}
+
       assert %{duration: _, input_tokens: 812, output_tokens: 0, cost: cost} = stop_measurements
       assert cost == Jev.cost(812)
       assert stop.status == 200
@@ -261,13 +262,13 @@ defmodule Jev.HTTPTest do
       assert stop.confidence == %{kind: 0.91, severity: 0.62}
 
       assert_receive {^ref, [:jev, :answer], %{confidence: 0.91, probability: 0.93},
-                      %{name: :kind, type: :choice, answer: :bug}}
+                      %{name: :kind, type: :choice, answer: :bug, tag: {:issue, 7}}}
 
       assert_receive {^ref, [:jev, :answer], %{confidence: 0.62, probability: 0.6},
-                      %{name: :severity, type: :score}}
+                      %{name: :severity, type: :score, tag: {:issue, 7}}}
 
       assert_receive {^ref, [:jev, :answer], %{probability: 0.03},
-                      %{name: :security, type: :noul, answer: 0.03}}
+                      %{name: :security, type: :noul, answer: 0.03, tag: {:issue, 7}}}
     end
 
     test "emits answer events only for the questions the server answered", %{ref: ref} do
@@ -283,11 +284,13 @@ defmodule Jev.HTTPTest do
     test "metadata carries the endpoint name", %{ref: ref} do
       Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, reply()))
 
-      {:ok, _} = Jev.HTTP.post("state", questions(), endpoint: :local)
+      {:ok, _} = Jev.HTTP.post("state", questions(), endpoint: :local, tag: ref)
 
-      assert_receive {^ref, [:jev, :request, :stop], %{cost: cost}, %{endpoint: :local}}
+      assert_receive {^ref, [:jev, :request, :stop], %{cost: cost},
+                      %{endpoint: :local, tag: ^ref}}
+
       assert cost == 0
-      assert_receive {^ref, [:jev, :answer], _, %{endpoint: :local, name: :kind}}
+      assert_receive {^ref, [:jev, :answer], _, %{endpoint: :local, name: :kind, tag: ^ref}}
     end
 
     test "stop metadata carries the status and request id on failure", %{ref: ref} do
@@ -305,10 +308,10 @@ defmodule Jev.HTTPTest do
 
     test "exceptions inside the call emit the exception event", %{ref: ref} do
       assert_raise Protocol.UndefinedError, fn ->
-        Jev.HTTP.post(make_ref(), security: "Vuln?")
+        Jev.HTTP.post(make_ref(), [security: "Vuln?"], tag: ref)
       end
 
-      assert_receive {^ref, [:jev, :request, :exception], _, %{kind: :error}}
+      assert_receive {^ref, [:jev, :request, :exception], _, %{kind: :error, tag: ^ref}}
     end
   end
 end

@@ -23,11 +23,14 @@ defmodule Jev.TelemetryTest do
                {:ok, reply}
              end)
 
-    assert_receive {^ref, [:jev, :request, :start], _, start}
-    assert %{backend: Canned, tag: 1, state_hash: _} = start
+    # The handler is global and other modules run concurrently: match this span's own events.
+    assert_receive {^ref, [:jev, :request, :start], _, %{backend: Canned, tag: 1} = start}
+    assert %{state_hash: _} = start
     assert start.questions == %{kind: :choice, severity: :score, security: :noul}
 
-    assert_receive {^ref, [:jev, :request, :stop], %{input_tokens: 812, cost: _}, stop}
+    assert_receive {^ref, [:jev, :request, :stop], %{input_tokens: 812, cost: _},
+                    %{backend: Canned, tag: 1} = stop}
+
     assert stop.confidence == reply.confidence
     refute Map.has_key?(stop, :status)
 
