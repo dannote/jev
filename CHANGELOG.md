@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `Jev.HTTP` retries gateway errors (502, 503, 504) like 429 and 529. A crawler judging
+  thousands of pages met a transient 503 from the API's edge and failed the page for it.
+
 ## 0.2.1 (2026-09-22)
 
 - `examples/local.exs` is a live smoke test against any `/v1/systemone` server, and

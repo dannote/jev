@@ -107,7 +107,7 @@ def handle_answer({:error, %Jev.Error{status: 529}}, {attempt, issue} = tag, s) 
 end
 ```
 
-Note that `Jev.HTTP` already retries 429 and 529 with backoff before the error
+Note that `Jev.HTTP` already retries 429, 529, and gateway errors (502, 503, 504) with backoff before the error
 reaches you, so this is for the rare case that outlives those retries.
 
 ## Routing on the reply

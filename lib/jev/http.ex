@@ -18,8 +18,8 @@ defmodule Jev.HTTP do
         req_options: []                                 # merged into Req.new/1, e.g. a test plug
 
   Every option except `usd_per_million_input` and `req_options` can also be
-  passed per call. Requests that fail with 429 or 529 are retried with backoff,
-  honouring `Retry-After`, as the API documentation asks.
+  passed per call. Requests that fail with 429 or 529, or with a gateway error
+  (502, 503, 504), are retried with backoff, honouring `Retry-After`.
 
   ## Endpoints
 
@@ -213,7 +213,8 @@ defmodule Jev.HTTP do
     end
   end
 
-  defp retry?(_request, %Req.Response{status: status}), do: status in [429, 529]
+  # Rate limits, overload, and the gateway failures in front of any API: all transient.
+  defp retry?(_request, %Req.Response{status: status}), do: status in [429, 502, 503, 504, 529]
   defp retry?(_request, _exception), do: true
 
   defp auth(%{name: :typesafe, api_key: nil}) do

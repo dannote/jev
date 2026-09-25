@@ -50,7 +50,7 @@ the body carries the distribution implied by the confidence, so
 
 Failures are `Jev.Test.error/3`, which sends a body the client turns into a
 `Jev.Error`, and `Req.Test.transport_error/2` for a connection failure. A stub
-that returns 429 or 529 exercises the retry path:
+that returns 429, 529, or a gateway error such as 503 exercises the retry path:
 
 ```elixir
 Req.Test.stub(Jev.HTTP, &Jev.Test.error(&1, 529, "overloaded"))

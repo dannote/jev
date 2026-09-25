@@ -166,7 +166,8 @@ evaluation harnesses:
 {:ok, reply} = Jev.HTTP.post(issue, kind: {"Kind?", %{bug: nil, other: nil}}, security: "Vuln?")
 ```
 
-It retries 429 and 529 with backoff, honouring `Retry-After`. Non-2xx responses
+It retries 429 and 529, and the gateway errors 502, 503, and 504, with backoff,
+honouring `Retry-After`. Non-2xx responses
 come back as `{:error, %Jev.Error{status: status, body: body, request_id: id}}`,
 and a 200 whose body does not fit the wire format as `{:error, %JSONCodec.Error{}}`.
 The wire format itself is `Jev.Wire`, a set of [JSONCodec](https://hex.pm/packages/json_codec)

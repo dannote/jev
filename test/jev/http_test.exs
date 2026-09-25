@@ -66,6 +66,42 @@ defmodule Jev.HTTPTest do
     assert Agent.get(counter, & &1) == 4
   end
 
+  test "retries gateway errors too" do
+    {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(Jev.HTTP, fn conn ->
+      case Agent.get_and_update(counter, &{&1, &1 + 1}) do
+        0 ->
+          Plug.Conn.send_resp(
+            conn,
+            503,
+            "upstream connect error or disconnect/reset before headers"
+          )
+
+        1 ->
+          Jev.Test.error(conn, 502, "bad gateway")
+
+        _ ->
+          Jev.Test.respond(conn, reply())
+      end
+    end)
+
+    assert {:ok, %{kind: :bug}} = Jev.HTTP.post("state", questions())
+    assert Agent.get(counter, & &1) == 3
+  end
+
+  test "does not retry other server errors" do
+    {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+    Req.Test.stub(Jev.HTTP, fn conn ->
+      Agent.update(counter, &(&1 + 1))
+      Jev.Test.error(conn, 500, "boom")
+    end)
+
+    assert {:error, %Jev.Error{status: 500}} = Jev.HTTP.post("state", questions())
+    assert Agent.get(counter, & &1) == 1
+  end
+
   test "recovers when a retry succeeds" do
     {:ok, counter} = Agent.start_link(fn -> 0 end)
 
@@ -237,10 +273,11 @@ defmodule Jev.HTTPTest do
     test "emits answer events only for the questions the server answered", %{ref: ref} do
       Req.Test.stub(Jev.HTTP, &Jev.Test.respond(&1, security: 0.4))
 
-      {:ok, %{security: 0.4}} = Jev.HTTP.post("state", questions())
+      # The handler is global, so match this request by its tag: other modules' tests run concurrently.
+      {:ok, %{security: 0.4}} = Jev.HTTP.post("state", questions(), tag: ref)
 
-      assert_receive {^ref, [:jev, :answer], _, %{name: :security}}
-      refute_receive {^ref, [:jev, :answer], _, %{name: :kind}}
+      assert_receive {^ref, [:jev, :answer], _, %{name: :security, tag: ^ref}}
+      refute_receive {^ref, [:jev, :answer], _, %{name: :kind, tag: ^ref}}
     end
 
     test "metadata carries the endpoint name", %{ref: ref} do

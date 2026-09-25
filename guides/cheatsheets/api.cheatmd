@@ -146,7 +146,7 @@ Jev.HTTP.endpoint(endpoint: :laya)
 %Jev.Error{status: 422, body: %{...}, request_id: "req_...", endpoint: :typesafe}
 ```
 
-Retries 429 and 529 with backoff before returning.
+Retries 429, 529, and gateway errors (502, 503, 504) with backoff before returning.
 
 ## Configuration
 {: .col-2}
