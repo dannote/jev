@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.3 (2026-09-27)
 
 - The child spec from `use Jev.Server` starts the server through the module's own
   `start_link/1` when it defines one, as `use GenServer` does. A server that named itself
