@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.2 (2026-09-26)
 
 - `Jev.HTTP` retries gateway errors (502, 503, 504) like 429 and 529. A crawler judging
   thousands of pages met a transient 503 from the API's edge and failed the page for it.
