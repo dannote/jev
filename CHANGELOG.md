@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The child spec from `use Jev.Server` starts the server through the module's own
+  `start_link/1` when it defines one, as `use GenServer` does. A server that named itself
+  in `start_link/1` was started unnamed under a supervisor, and casts to the name were lost.
+
 ## 0.2.2 (2026-09-26)
 
 - `Jev.HTTP` retries gateway errors (502, 503, 504) like 429 and 529. A crawler judging

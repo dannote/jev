@@ -243,6 +243,26 @@ defmodule Jev.ServerTest do
              Temporary.child_spec(:x)
   end
 
+  defmodule Named do
+    @moduledoc false
+    use Jev.Server
+
+    def start_link(opts), do: Jev.Server.start_link(__MODULE__, opts, name: __MODULE__)
+
+    @impl true
+    def init(opts), do: {:ok, opts}
+
+    @impl true
+    def handle_answer(_reply, _tag, s), do: {:noreply, s}
+  end
+
+  test "the child spec goes through the module's own start_link/1, so its name holds under a supervisor" do
+    assert %{start: {Named, :start_link, [[a: 1]]}} = Named.child_spec(a: 1)
+    pid = start_supervised!({Named, [a: 1]})
+    assert Process.whereis(Named) == pid
+    assert :sys.get_state(Named).inner == [a: 1]
+  end
+
   defmodule Lifecycle do
     @moduledoc false
     use Jev.Server

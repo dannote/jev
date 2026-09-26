@@ -101,6 +101,11 @@ defmodule Jev.Server do
 
       use Jev.Server, restart: :temporary, shutdown: 10_000
 
+  The child spec starts the server through the module's own `start_link/1`
+  when it defines one, as `use GenServer` does, so a `name:` or other option
+  given there holds under a supervisor. A module without `start_link/1` is
+  started through `Jev.Server.start_link/2` directly.
+
   Default `handle_call/3`, `handle_cast/2`, and `handle_info/2` clauses behave
   like GenServer's: an unexpected call or cast stops the server with a clear
   error, and an unexpected message is logged and ignored.
@@ -108,11 +113,8 @@ defmodule Jev.Server do
   defmacro __using__(opts) do
     quote location: :keep, bind_quoted: [opts: opts] do
       @behaviour Jev.Server
-
-      def child_spec(arg) do
-        default = %{id: __MODULE__, start: {Jev.Server, :start_link, [__MODULE__, arg]}}
-        Supervisor.child_spec(default, unquote(Macro.escape(opts)))
-      end
+      @jev_server_child_opts opts
+      @before_compile Jev.Server
 
       @doc false
       def handle_call(msg, _from, state) do
@@ -145,7 +147,32 @@ defmodule Jev.Server do
         {:noreply, state}
       end
 
-      defoverridable child_spec: 1, handle_call: 3, handle_cast: 2, handle_info: 2
+      defoverridable handle_call: 3, handle_cast: 2, handle_info: 2
+    end
+  end
+
+  # child_spec/1 is defined last, once it is known whether the module has its
+  # own start_link/1 (GenServer's convention) or its own child_spec/1.
+  defmacro __before_compile__(env) do
+    cond do
+      Module.defines?(env.module, {:child_spec, 1}) ->
+        nil
+
+      Module.defines?(env.module, {:start_link, 1}) ->
+        quote do
+          def child_spec(arg) do
+            default = %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}}
+            Supervisor.child_spec(default, @jev_server_child_opts)
+          end
+        end
+
+      true ->
+        quote do
+          def child_spec(arg) do
+            default = %{id: __MODULE__, start: {Jev.Server, :start_link, [__MODULE__, arg]}}
+            Supervisor.child_spec(default, @jev_server_child_opts)
+          end
+        end
     end
   end
 

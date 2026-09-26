@@ -167,6 +167,15 @@ children = [
 ]
 ```
 
+As with `use GenServer`, the child spec calls the module's own `start_link/1`
+when it defines one, which is where a name goes:
+
+```elixir
+def start_link(opts), do: Jev.Server.start_link(__MODULE__, opts, name: __MODULE__)
+```
+
+A module without `start_link/1` is started through `Jev.Server.start_link/2`.
+
 The default `handle_call/3`, `handle_cast/2`, and `handle_info/2` behave like
 GenServer's: an unexpected call or cast stops the server with a "no clause was
 provided" error, and an unexpected message is logged and ignored.
